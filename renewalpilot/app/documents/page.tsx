@@ -65,6 +65,16 @@ export default function DocumentsPage() {
     loadData()
   }
 
+  async function handleAnalyze(fileUrl: string) {
+    const res = await fetch('/api/analyze-document', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileUrl }),
+    })
+    const result = await res.json()
+    alert(JSON.stringify(result, null, 2))
+  }
+
   return (
     <div style={{ maxWidth: 700, margin: '3rem auto', padding: '0 1rem' }}>
       <h1 style={{ marginBottom: '1.5rem' }}>Documents</h1>
@@ -106,6 +116,12 @@ export default function DocumentsPage() {
                 {doc.file_url.split('/').pop()}
               </a>
               <span style={{ color: '#888', marginLeft: 8, fontSize: '0.85rem' }}>({doc.document_type})</span>
+              <button
+                onClick={() => handleAnalyze(doc.file_url)}
+                style={{ marginLeft: 12, padding: '0.25rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer' }}
+              >
+                Analyze with AI
+              </button>
             </li>
           ))}
         </ul>
