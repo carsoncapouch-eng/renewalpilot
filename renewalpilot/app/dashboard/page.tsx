@@ -67,6 +67,22 @@ export default function DashboardPage() {
         >
           Check Renewal Statuses
         </button>
+        <button
+          onClick={async () => {
+            const email = prompt('Send reminder emails to which address?')
+            if (!email) return
+            const res = await fetch('/api/send-reminders', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ to: email }),
+            })
+            const result = await res.json()
+            alert(result.error ? `Error: ${result.error}` : `Sent ${result.sent} reminder email(s).`)
+          }}
+          style={{ padding: '0.75rem 1.25rem', border: '1px solid #000', borderRadius: 8, background: '#fff', cursor: 'pointer' }}
+        >
+          Send Reminder Emails
+        </button>
       </div>
     </div>
   )
