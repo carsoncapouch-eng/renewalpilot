@@ -53,9 +53,20 @@ export default function DashboardPage() {
         <div style={cardStyle}><h2>{missing.length}</h2><p>Missing</p></div>
       </div>
 
-      <div style={{ display: 'flex', gap: '1rem' }}>
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
         <a href="/requirements" style={{ padding: '0.75rem 1.25rem', background: '#000', color: '#fff', borderRadius: 8, textDecoration: 'none' }}>+ Add Requirement</a>
         <a href="/documents" style={{ padding: '0.75rem 1.25rem', border: '1px solid #000', borderRadius: 8, textDecoration: 'none', color: '#000' }}>Upload Document</a>
+        <button
+          onClick={async () => {
+            const res = await fetch('/api/check-renewals', { method: 'POST' })
+            const result = await res.json()
+            alert(`Checked ${result.checked} requirements, updated ${result.updated} statuses.`)
+            window.location.reload()
+          }}
+          style={{ padding: '0.75rem 1.25rem', border: '1px solid #000', borderRadius: 8, background: '#fff', cursor: 'pointer' }}
+        >
+          Check Renewal Statuses
+        </button>
       </div>
     </div>
   )
