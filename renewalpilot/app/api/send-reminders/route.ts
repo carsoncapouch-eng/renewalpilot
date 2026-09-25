@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
 
     const employeeName = req.employees?.name || 'Unassigned'
     const statusLabel = req.status === 'overdue' ? 'OVERDUE' : 'Expiring Soon'
+    const renewalLink = `https://${process.env.CODESPACE_NAME}-3000.app.github.dev/documents?requirement=${req.id}`
 
     await resend.emails.send({
       from: 'RenewalPilot <onboarding@resend.dev>',
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
         <p><strong>Person responsible:</strong> ${employeeName}</p>
         <p><strong>Expiration date:</strong> ${req.expiration_date}</p>
         <p><strong>Days remaining:</strong> ${daysRemaining}</p>
-        <p><a href="#">Upload Renewal</a></p>
+        <p><a href="${renewalLink}">Upload Renewal</a></p>
       `,
     })
     sent++

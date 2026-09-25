@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
 type Employee = { id: string; name: string }
@@ -9,6 +10,7 @@ type Document = {
   file_url: string
   document_type: string
   requirement_id: string | null
+  archived: boolean
   uploaded_at: string
 }
 type Extracted = {
@@ -21,16 +23,18 @@ type Extracted = {
 }
 
 export default function DocumentsPage() {
+  const searchParams = useSearchParams()
+  const preselectedRequirement = searchParams.get('requirement') || ''
+
   const [employees, setEmployees] = useState<Employee[]>([])
   const [requirements, setRequirements] = useState<Requirement[]>([])
   const [documents, setDocuments] = useState<Document[]>([])
   const [employeeId, setEmployeeId] = useState('')
-  const [requirementId, setRequirementId] = useState('')
+  const [requirementId, setRequirementId] = useState(preselectedRequirement)
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // Confirmation screen state
   const [analyzingDocId, setAnalyzingDocId] = useState<string | null>(null)
   const [reviewDoc, setReviewDoc] = useState<Document | null>(null)
   const [extracted, setExtracted] = useState<Extracted | null>(null)
@@ -38,7 +42,7 @@ export default function DocumentsPage() {
   async function loadData() {
     const { data: emps } = await supabase.from('employees').select('id, name').order('name')
     const { data: reqs } = await supabase.from('requirements').select('id, name').order('name')
-    const { data: docs } = await supabase.from('documents').select('*').order('uploaded_at', { ascending: false })
+    const { data: docs } = await supabase.from('documents').select('*').eq('archived', false).order('uploaded_at', { ascending: false })
     setEmployees(emps || [])
     setRequirements(reqs || [])
     setDocuments(docs || [])
@@ -105,10 +109,21 @@ export default function DocumentsPage() {
       document_type: extracted.document_type || reviewDoc.document_type,
     }).eq('id', reviewDoc.id)
 
-    if (reviewDoc.requirement_id && extracted.expiration_date) {
-      await supabase.from('requirements').update({
-        expiration_date: extracted.expiration_date,
-      }).eq('id', reviewDoc.requirement_id)
+    if (reviewDoc.requirement_id) {
+      // Archive any other documents previously linked to this requirement
+      await supabase
+        .from('documents')
+        .update({ archived: true })
+        .eq('requirement_id', reviewDoc.requirement_id)
+        .neq('id', reviewDoc.id)
+
+      // Update the requirement with the new expiration date and reset status
+      if (extracted.expiration_date) {
+        await supabase.from('requirements').update({
+          expiration_date: extracted.expiration_date,
+          status: 'active',
+        }).eq('id', reviewDoc.requirement_id)
+      }
     }
 
     setReviewDoc(null)
@@ -124,6 +139,12 @@ export default function DocumentsPage() {
   return (
     <div style={{ maxWidth: 700, margin: '3rem auto', padding: '0 1rem' }}>
       <h1 style={{ marginBottom: '1.5rem' }}>Documents</h1>
+
+      {preselectedRequirement && (
+        <p style={{ background: '#fef3c7', padding: '0.75rem 1rem', borderRadius: 8, marginBottom: '1rem' }}>
+          Uploading a renewal for a specific requirement — it's pre-selected below.
+        </p>
+      )}
 
       <form onSubmit={handleUpload} style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: '2rem', padding: '1rem', border: '1px solid #eee', borderRadius: 8 }}>
         <label>
@@ -198,6 +219,12 @@ export default function DocumentsPage() {
               Issuing Authority
               <input value={extracted.issuing_authority || ''} onChange={(e) => updateField('issuing_authority', e.target.value)} style={{ width: '100%', padding: '0.5rem', marginTop: 4 }} />
             </label>
+
+            {reviewDoc.requirement_id && (
+              <p style={{ fontSize: '0.8rem', color: '#888' }}>
+                Confirming will archive the old document for this requirement and update its expiration date.
+              </p>
+            )}
 
             <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
               <button onClick={handleConfirm} style={{ flex: 1, padding: '0.6rem', background: '#000', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
