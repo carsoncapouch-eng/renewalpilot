@@ -8,7 +8,16 @@ type Document = {
   id: string
   file_url: string
   document_type: string
+  requirement_id: string | null
   uploaded_at: string
+}
+type Extracted = {
+  document_type: string | null
+  employee: string | null
+  expiration_date: string | null
+  issuing_authority: string | null
+  document_number: string | null
+  confidence: number
 }
 
 export default function DocumentsPage() {
@@ -20,6 +29,11 @@ export default function DocumentsPage() {
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(true)
+
+  // Confirmation screen state
+  const [analyzingDocId, setAnalyzingDocId] = useState<string | null>(null)
+  const [reviewDoc, setReviewDoc] = useState<Document | null>(null)
+  const [extracted, setExtracted] = useState<Extracted | null>(null)
 
   async function loadData() {
     const { data: emps } = await supabase.from('employees').select('id, name').order('name')
@@ -65,14 +79,46 @@ export default function DocumentsPage() {
     loadData()
   }
 
-  async function handleAnalyze(fileUrl: string) {
+  async function handleAnalyze(doc: Document) {
+    setAnalyzingDocId(doc.id)
     const res = await fetch('/api/analyze-document', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileUrl }),
+      body: JSON.stringify({ fileUrl: doc.file_url }),
     })
     const result = await res.json()
-    alert(JSON.stringify(result, null, 2))
+    setAnalyzingDocId(null)
+
+    if (result.error) {
+      alert('Analysis failed: ' + result.error)
+      return
+    }
+
+    setReviewDoc(doc)
+    setExtracted(result)
+  }
+
+  async function handleConfirm() {
+    if (!reviewDoc || !extracted) return
+
+    await supabase.from('documents').update({
+      document_type: extracted.document_type || reviewDoc.document_type,
+    }).eq('id', reviewDoc.id)
+
+    if (reviewDoc.requirement_id && extracted.expiration_date) {
+      await supabase.from('requirements').update({
+        expiration_date: extracted.expiration_date,
+      }).eq('id', reviewDoc.requirement_id)
+    }
+
+    setReviewDoc(null)
+    setExtracted(null)
+    loadData()
+  }
+
+  function updateField(field: keyof Extracted, value: string) {
+    if (!extracted) return
+    setExtracted({ ...extracted, [field]: value })
   }
 
   return (
@@ -117,14 +163,52 @@ export default function DocumentsPage() {
               </a>
               <span style={{ color: '#888', marginLeft: 8, fontSize: '0.85rem' }}>({doc.document_type})</span>
               <button
-                onClick={() => handleAnalyze(doc.file_url)}
+                onClick={() => handleAnalyze(doc)}
+                disabled={analyzingDocId === doc.id}
                 style={{ marginLeft: 12, padding: '0.25rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer' }}
               >
-                Analyze with AI
+                {analyzingDocId === doc.id ? 'Analyzing...' : 'Analyze with AI'}
               </button>
             </li>
           ))}
         </ul>
+      )}
+
+      {reviewDoc && extracted && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: '#fff', padding: '1.5rem', borderRadius: 12, width: 340, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <h2 style={{ marginBottom: 4 }}>Review Extracted Info</h2>
+            <p style={{ fontSize: '0.85rem', color: '#888', marginTop: 0 }}>
+              Confidence: {Math.round((extracted.confidence || 0) * 100)}% — check these before saving.
+            </p>
+
+            <label>
+              Document Type
+              <input value={extracted.document_type || ''} onChange={(e) => updateField('document_type', e.target.value)} style={{ width: '100%', padding: '0.5rem', marginTop: 4 }} />
+            </label>
+            <label>
+              Employee
+              <input value={extracted.employee || ''} onChange={(e) => updateField('employee', e.target.value)} style={{ width: '100%', padding: '0.5rem', marginTop: 4 }} />
+            </label>
+            <label>
+              Expiration Date
+              <input type="date" value={extracted.expiration_date || ''} onChange={(e) => updateField('expiration_date', e.target.value)} style={{ width: '100%', padding: '0.5rem', marginTop: 4 }} />
+            </label>
+            <label>
+              Issuing Authority
+              <input value={extracted.issuing_authority || ''} onChange={(e) => updateField('issuing_authority', e.target.value)} style={{ width: '100%', padding: '0.5rem', marginTop: 4 }} />
+            </label>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+              <button onClick={handleConfirm} style={{ flex: 1, padding: '0.6rem', background: '#000', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                Confirm & Save
+              </button>
+              <button onClick={() => { setReviewDoc(null); setExtracted(null) }} style={{ flex: 1, padding: '0.6rem', border: '1px solid #000', borderRadius: 8, background: '#fff', cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
