@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { getCurrentOrganizationId } from '@/lib/getOrganization'
 
 type Requirement = {
   id: string
@@ -17,9 +18,15 @@ export default function AttentionPage() {
 
   useEffect(() => {
     async function loadData() {
+      const organizationId = await getCurrentOrganizationId()
+      if (!organizationId) {
+        setLoading(false)
+        return
+      }
       const { data } = await supabase
         .from('requirements')
         .select('*, employees(name)')
+        .eq('organization_id', organizationId)
         .in('status', ['overdue', 'expiring_soon'])
         .order('expiration_date')
       setRequirements(data || [])
