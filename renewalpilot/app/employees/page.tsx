@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { getCurrentOrganizationId } from '@/lib/getOrganization'
 
 type Employee = {
   id: string
@@ -16,9 +17,20 @@ export default function EmployeesPage() {
   const [email, setEmail] = useState('')
   const [department, setDepartment] = useState('')
   const [loading, setLoading] = useState(true)
+  const [orgId, setOrgId] = useState<string | null>(null)
 
   async function loadEmployees() {
-    const { data } = await supabase.from('employees').select('*').order('name')
+    const organizationId = await getCurrentOrganizationId()
+    setOrgId(organizationId)
+    if (!organizationId) {
+      setLoading(false)
+      return
+    }
+    const { data } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('name')
     setEmployees(data || [])
     setLoading(false)
   }
@@ -29,7 +41,8 @@ export default function EmployeesPage() {
 
   async function handleAddEmployee(e: React.FormEvent) {
     e.preventDefault()
-    await supabase.from('employees').insert({ name, email, department })
+    if (!orgId) return
+    await supabase.from('employees').insert({ name, email, department, organization_id: orgId })
     setName('')
     setEmail('')
     setDepartment('')
