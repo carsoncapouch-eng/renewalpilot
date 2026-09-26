@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import { getCurrentOrganizationId } from '@/lib/getOrganization'
 
 type Employee = { id: string; name: string }
 type Requirement = { id: string; name: string }
@@ -34,15 +35,22 @@ export default function DocumentsPage() {
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [orgId, setOrgId] = useState<string | null>(null)
 
   const [analyzingDocId, setAnalyzingDocId] = useState<string | null>(null)
   const [reviewDoc, setReviewDoc] = useState<Document | null>(null)
   const [extracted, setExtracted] = useState<Extracted | null>(null)
 
   async function loadData() {
-    const { data: emps } = await supabase.from('employees').select('id, name').order('name')
-    const { data: reqs } = await supabase.from('requirements').select('id, name').order('name')
-    const { data: docs } = await supabase.from('documents').select('*').eq('archived', false).order('uploaded_at', { ascending: false })
+    const organizationId = await getCurrentOrganizationId()
+    setOrgId(organizationId)
+    if (!organizationId) {
+      setLoading(false)
+      return
+    }
+    const { data: emps } = await supabase.from('employees').select('id, name').eq('organization_id', organizationId).order('name')
+    const { data: reqs } = await supabase.from('requirements').select('id, name').eq('organization_id', organizationId).order('name')
+    const { data: docs } = await supabase.from('documents').select('*').eq('organization_id', organizationId).eq('archived', false).order('uploaded_at', { ascending: false })
     setEmployees(emps || [])
     setRequirements(reqs || [])
     setDocuments(docs || [])
@@ -55,7 +63,7 @@ export default function DocumentsPage() {
 
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault()
-    if (!file) return
+    if (!file || !orgId) return
     setUploading(true)
 
     const filePath = `${Date.now()}-${file.name}`
@@ -74,6 +82,7 @@ export default function DocumentsPage() {
       requirement_id: requirementId || null,
       file_url: urlData.publicUrl,
       document_type: file.type,
+      organization_id: orgId,
     })
 
     setFile(null)
@@ -110,14 +119,12 @@ export default function DocumentsPage() {
     }).eq('id', reviewDoc.id)
 
     if (reviewDoc.requirement_id) {
-      // Archive any other documents previously linked to this requirement
       await supabase
         .from('documents')
         .update({ archived: true })
         .eq('requirement_id', reviewDoc.requirement_id)
         .neq('id', reviewDoc.id)
 
-      // Update the requirement with the new expiration date and reset status
       if (extracted.expiration_date) {
         await supabase.from('requirements').update({
           expiration_date: extracted.expiration_date,
