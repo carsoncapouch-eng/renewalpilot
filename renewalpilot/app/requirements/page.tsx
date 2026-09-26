@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { getCurrentOrganizationId } from '@/lib/getOrganization'
 
 type Employee = { id: string; name: string }
 type Requirement = {
@@ -21,10 +22,17 @@ export default function RequirementsPage() {
   const [expirationDate, setExpirationDate] = useState('')
   const [reminderSchedule, setReminderSchedule] = useState('30 days before')
   const [loading, setLoading] = useState(true)
+  const [orgId, setOrgId] = useState<string | null>(null)
 
   async function loadData() {
-    const { data: emps } = await supabase.from('employees').select('id, name').order('name')
-    const { data: reqs } = await supabase.from('requirements').select('*').order('expiration_date')
+    const organizationId = await getCurrentOrganizationId()
+    setOrgId(organizationId)
+    if (!organizationId) {
+      setLoading(false)
+      return
+    }
+    const { data: emps } = await supabase.from('employees').select('id, name').eq('organization_id', organizationId).order('name')
+    const { data: reqs } = await supabase.from('requirements').select('*').eq('organization_id', organizationId).order('expiration_date')
     setEmployees(emps || [])
     setRequirements(reqs || [])
     setLoading(false)
@@ -36,6 +44,7 @@ export default function RequirementsPage() {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
+    if (!orgId) return
     await supabase.from('requirements').insert({
       employee_id: employeeId,
       name,
@@ -43,6 +52,7 @@ export default function RequirementsPage() {
       expiration_date: expirationDate,
       reminder_schedule: reminderSchedule,
       status: 'active',
+      organization_id: orgId,
     })
     setEmployeeId('')
     setName('')
