@@ -45,11 +45,11 @@ export default function Header() {
   return (
     <header style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '0.75rem 1.5rem', borderBottom: '1px solid #eee', background: '#fff',
+      padding: '0.85rem 1.75rem', borderBottom: '1px solid var(--line)', background: 'var(--surface)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-        <span style={{ fontWeight: 700 }}>RenewalPilot</span>
-        <nav style={{ display: 'flex', gap: '1.25rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '2.25rem' }}>
+        <span style={{ fontWeight: 700, color: 'var(--ink)', letterSpacing: '-0.01em' }}>RenewalPilot</span>
+        <nav style={{ display: 'flex', gap: '1.5rem' }}>
           {links.map(link => {
             const active = pathname?.startsWith(link.href)
             return (
@@ -57,11 +57,11 @@ export default function Header() {
                 key={link.href}
                 href={link.href}
                 style={{
-                  fontSize: '0.9rem',
-                  color: active ? '#000' : '#888',
+                  fontSize: '0.88rem',
+                  color: active ? 'var(--ink)' : 'var(--ink-soft)',
                   fontWeight: active ? 600 : 400,
                   textDecoration: 'none',
-                  borderBottom: active ? '2px solid #000' : '2px solid transparent',
+                  borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
                   paddingBottom: 4,
                 }}
               >
@@ -77,31 +77,31 @@ export default function Header() {
           onClick={() => setOpen(!open)}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            padding: '0.4rem 0.75rem', borderRadius: 8,
-            border: '1px solid #ddd', background: '#fff', cursor: 'pointer',
+            padding: '0.35rem 0.75rem 0.35rem 0.35rem', borderRadius: 20,
+            border: '1px solid var(--line)', background: 'var(--surface)', cursor: 'pointer',
           }}
         >
           <span style={{
-            width: 26, height: 26, borderRadius: '50%', background: '#000', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem',
+            width: 26, height: 26, borderRadius: '50%', background: 'var(--accent)', color: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.78rem', fontWeight: 600,
           }}>
             {orgName.charAt(0).toUpperCase() || '?'}
           </span>
-          <span style={{ fontSize: '0.9rem' }}>{orgName}</span>
+          <span style={{ fontSize: '0.88rem', color: 'var(--ink)' }}>{orgName}</span>
         </button>
 
         {open && (
           <div style={{
             position: 'absolute', right: 0, top: '110%', width: 220,
-            background: '#fff', border: '1px solid #ddd', borderRadius: 8,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)', padding: '0.75rem', zIndex: 50,
+            background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10,
+            boxShadow: '0 8px 24px rgba(28,37,48,0.12)', padding: '0.85rem', zIndex: 50,
           }}>
-            <p style={{ fontSize: '0.75rem', color: '#888', margin: '0 0 4px 0' }}>Signed in as</p>
-            <p style={{ fontWeight: 600, margin: '0 0 0.75rem 0', fontSize: '0.9rem' }}>{email}</p>
-            <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '0.5rem 0' }} />
+            <p style={{ fontSize: '0.72rem', color: 'var(--ink-soft)', margin: '0 0 4px 0' }}>Signed in as</p>
+            <p style={{ fontWeight: 600, margin: '0 0 0.75rem 0', fontSize: '0.88rem' }}>{email}</p>
+            <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '0.5rem 0' }} />
             <button
               onClick={handleLogout}
-              style={{ width: '100%', textAlign: 'left', padding: '0.5rem 0', background: 'none', border: 'none', cursor: 'pointer', color: '#b23b3b', fontSize: '0.9rem' }}
+              style={{ width: '100%', textAlign: 'left', padding: '0.5rem 0', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--signal-red)', fontSize: '0.88rem' }}
             >
               Log Out
             </button>
