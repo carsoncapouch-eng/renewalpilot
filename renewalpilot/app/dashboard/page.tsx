@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { getCurrentOrganizationId } from '@/lib/getOrganization'
 
 type Requirement = {
   id: string
@@ -12,10 +13,17 @@ type Requirement = {
 export default function DashboardPage() {
   const [requirements, setRequirements] = useState<Requirement[]>([])
   const [loading, setLoading] = useState(true)
+  const [orgId, setOrgId] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadData() {
-      const { data } = await supabase.from('requirements').select('*')
+      const organizationId = await getCurrentOrganizationId()
+      setOrgId(organizationId)
+      if (!organizationId) {
+        setLoading(false)
+        return
+      }
+      const { data } = await supabase.from('requirements').select('*').eq('organization_id', organizationId)
       setRequirements(data || [])
       setLoading(false)
     }
@@ -58,7 +66,12 @@ export default function DashboardPage() {
         <a href="/documents" style={{ padding: '0.75rem 1.25rem', border: '1px solid #000', borderRadius: 8, textDecoration: 'none', color: '#000' }}>Upload Document</a>
         <button
           onClick={async () => {
-            const res = await fetch('/api/check-renewals', { method: 'POST' })
+            if (!orgId) return
+            const res = await fetch('/api/check-renewals', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ organizationId: orgId }),
+            })
             const result = await res.json()
             alert(`Checked ${result.checked} requirements, updated ${result.updated} statuses.`)
             window.location.reload()
@@ -69,12 +82,13 @@ export default function DashboardPage() {
         </button>
         <button
           onClick={async () => {
+            if (!orgId) return
             const email = prompt('Send reminder emails to which address?')
             if (!email) return
             const res = await fetch('/api/send-reminders', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ to: email }),
+              body: JSON.stringify({ to: email, organizationId: orgId }),
             })
             const result = await res.json()
             alert(result.error ? `Error: ${result.error}` : `Sent ${result.sent} reminder email(s).`)

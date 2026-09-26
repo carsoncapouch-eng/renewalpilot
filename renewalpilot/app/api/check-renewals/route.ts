@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -19,8 +19,17 @@ function reminderThreshold(schedule: string) {
   return match ? parseInt(match[0], 10) : 30
 }
 
-export async function POST() {
-  const { data: requirements, error } = await supabase.from('requirements').select('*')
+export async function POST(request: NextRequest) {
+  const { organizationId } = await request.json()
+
+  if (!organizationId) {
+    return NextResponse.json({ error: 'No organization provided' }, { status: 400 })
+  }
+
+  const { data: requirements, error } = await supabase
+    .from('requirements')
+    .select('*')
+    .eq('organization_id', organizationId)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -46,4 +55,4 @@ export async function POST() {
   }
 
   return NextResponse.json({ checked: requirements?.length || 0, updated })
-} 
+}

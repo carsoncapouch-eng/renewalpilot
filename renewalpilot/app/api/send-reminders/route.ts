@@ -9,15 +9,16 @@ const supabase = createClient(
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(request: NextRequest) {
-  const { to } = await request.json()
+  const { to, organizationId } = await request.json()
 
-  if (!to) {
-    return NextResponse.json({ error: 'No recipient email provided' }, { status: 400 })
+  if (!to || !organizationId) {
+    return NextResponse.json({ error: 'Missing recipient or organization' }, { status: 400 })
   }
 
   const { data: requirements, error } = await supabase
     .from('requirements')
     .select('*, employees(name)')
+    .eq('organization_id', organizationId)
     .in('status', ['expiring_soon', 'overdue'])
 
   if (error) {
