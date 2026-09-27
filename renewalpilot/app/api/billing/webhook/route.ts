@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
-import { stripe, planFromPriceId } from '../../../../lib/stripe'
-import { supabaseAdmin } from '../../../../lib/supabaseAdmin'
+import { stripe, planFromPriceId } from '@/lib/stripe'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 // Stripe calls this URL whenever something happens with a payment/subscription.
 export async function POST(req: Request) {
@@ -38,12 +38,10 @@ export async function POST(req: Request) {
         await syncSubscription(event.data.object as Stripe.Subscription)
         break
       default:
-        // Ignore everything else
         break
     }
   } catch (err) {
     console.log('[webhook] Error handling', event.type, (err as Error).message)
-    // 500 tells Stripe to retry later
     return NextResponse.json({ error: 'Webhook handler failed' }, { status: 500 })
   }
 
@@ -69,6 +67,8 @@ async function syncSubscription(sub: Stripe.Subscription) {
     plan,
     subscription_status: sub.status,
     current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+    // true when the customer has canceled but still has access until the period ends
+    cancel_at_period_end: !isCanceled && (sub.cancel_at_period_end || !!sub.cancel_at),
   }
 
   const orgId = sub.metadata?.organization_id
@@ -81,5 +81,5 @@ async function syncSubscription(sub: Stripe.Subscription) {
   const { error } = await query
   if (error) throw new Error(`Supabase update failed: ${error.message}`)
 
-  console.log(`[webhook] org ${orgId ?? customerId} → plan: ${plan}, status: ${sub.status}`)
+  console.log(`[webhook] org ${orgId ?? customerId} → plan: ${plan}, status: ${sub.status}, canceling: ${update.cancel_at_period_end}`)
 }
