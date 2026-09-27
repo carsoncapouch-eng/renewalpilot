@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentOrganizationId } from '@/lib/getOrganization'
@@ -22,7 +23,7 @@ const PLAN_NAMES: Record<string, string> = {
 const menuItem: React.CSSProperties = {
   display: 'block', width: '100%', textAlign: 'left', padding: '0.5rem 0.6rem',
   margin: '0 -0.6rem', borderRadius: 6, background: 'none', border: 'none',
-  cursor: 'pointer', color: 'var(--ink)', fontSize: '0.88rem', textDecoration: 'none',
+  cursor: 'pointer', color: 'var(--ink)', fontSize: '0.88rem', fontFamily: 'inherit',
 }
 
 export default function Header() {
@@ -51,7 +52,7 @@ export default function Header() {
       setPlan(org?.plan || 'free')
     }
     load()
-  }, [])
+  }, [pathname])
 
   // Close the dropdown when clicking anywhere outside it
   useEffect(() => {
@@ -61,6 +62,11 @@ export default function Header() {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
+
+  function go(path: string) {
+    setOpen(false)
+    router.push(path)
+  }
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -82,7 +88,7 @@ export default function Header() {
           {links.map(link => {
             const active = pathname?.startsWith(link.href)
             return (
-              <a
+              <Link
                 key={link.href}
                 href={link.href}
                 style={{
@@ -95,7 +101,7 @@ export default function Header() {
                 }}
               >
                 {link.label}
-              </a>
+              </Link>
             )
           })}
         </nav>
@@ -139,14 +145,23 @@ export default function Header() {
 
             <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '0.75rem 0 0.4rem' }} />
 
-            <a
-              href="/billing"
+            <button
+              onClick={() => go('/settings')}
+              style={menuItem}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--paper)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+            >
+              Settings
+            </button>
+
+            <button
+              onClick={() => go('/billing')}
               style={menuItem}
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--paper)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'none')}
             >
               Billing
-            </a>
+            </button>
 
             <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '0.4rem 0' }} />
 
