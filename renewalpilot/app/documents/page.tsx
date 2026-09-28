@@ -1,8 +1,9 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentOrganizationId } from '@/lib/getOrganization'
+import { authedPost } from '@/lib/authedPost'
 
 type Employee = { id: string; name: string }
 type Requirement = { id: string; name: string }
@@ -11,6 +12,7 @@ type Document = {
   file_url: string
   document_type: string
   requirement_id: string | null
+  employee_id: string | null
   archived: boolean
   uploaded_at: string
 }
@@ -23,7 +25,45 @@ type Extracted = {
   confidence: number
 }
 
+const card: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12 }
+const primaryButton: React.CSSProperties = {
+  padding: '0.6rem 1rem', background: 'var(--accent)', color: '#fff',
+  border: '1px solid var(--accent)', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem',
+}
+const smallButton: React.CSSProperties = {
+  padding: '0.35rem 0.7rem', fontSize: '0.82rem', borderRadius: 6, cursor: 'pointer',
+  border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)',
+}
+const fieldStyle: React.CSSProperties = { width: '100%', padding: '0.6rem 0.75rem', fontSize: '0.92rem', marginTop: 4 }
+const labelStyle: React.CSSProperties = { display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--ink-soft)' }
+
+// "1727470000000-driver license.pdf" → "driver license.pdf"
+function fileNameFromUrl(url: string) {
+  const raw = decodeURIComponent(url.split('/').pop() || 'document')
+  return raw.replace(/^\d+-/, '')
+}
+
+// Public URL → path inside the "documents" storage bucket
+function storagePathFromUrl(url: string) {
+  const marker = '/object/public/documents/'
+  const i = url.indexOf(marker)
+  return i === -1 ? null : decodeURIComponent(url.slice(i + marker.length))
+}
+
+function formatDate(d: string) {
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+// Pages that read the URL (?requirement=...) must be wrapped in <Suspense> for Vercel builds
 export default function DocumentsPage() {
+  return (
+    <Suspense fallback={<p style={{ textAlign: 'center', marginTop: '4rem', color: 'var(--ink-soft)' }}>Loading…</p>}>
+      <DocumentsContent />
+    </Suspense>
+  )
+}
+
+function DocumentsContent() {
   const searchParams = useSearchParams()
   const preselectedRequirement = searchParams.get('requirement') || ''
 
@@ -36,6 +76,7 @@ export default function DocumentsPage() {
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [orgId, setOrgId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const [analyzingDocId, setAnalyzingDocId] = useState<string | null>(null)
   const [reviewDoc, setReviewDoc] = useState<Document | null>(null)
@@ -77,28 +118,27 @@ export default function DocumentsPage() {
 
     const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath)
 
-    await supabase.from('documents').insert({
+    const { error } = await supabase.from('documents').insert({
       employee_id: employeeId || null,
       requirement_id: requirementId || null,
       file_url: urlData.publicUrl,
       document_type: file.type,
       organization_id: orgId,
     })
+    if (error) alert('Saving the document failed: ' + error.message)
 
     setFile(null)
     setEmployeeId('')
     setRequirementId('')
     setUploading(false)
+    const input = document.getElementById('file-input') as HTMLInputElement | null
+    if (input) input.value = ''
     loadData()
   }
 
   async function handleAnalyze(doc: Document) {
     setAnalyzingDocId(doc.id)
-    const res = await fetch('/api/analyze-document', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileUrl: doc.file_url }),
-    })
+    const res = await authedPost('/api/analyze-document', { fileUrl: doc.file_url })
     const result = await res.json()
     setAnalyzingDocId(null)
 
@@ -138,112 +178,174 @@ export default function DocumentsPage() {
     loadData()
   }
 
+  async function handleDelete(doc: Document) {
+    const name = fileNameFromUrl(doc.file_url)
+    if (!window.confirm(`Delete "${name}"? This can't be undone.`)) return
+
+    setDeletingId(doc.id)
+    // Remove the actual file from storage (if this fails, still remove the record)
+    const path = storagePathFromUrl(doc.file_url)
+    if (path) {
+      const { error: storageError } = await supabase.storage.from('documents').remove([path])
+      if (storageError) console.warn('Could not remove file from storage:', storageError.message)
+    }
+    const { error } = await supabase.from('documents').delete().eq('id', doc.id)
+    if (error) { alert(`Couldn't delete document: ${error.message}`); setDeletingId(null); return }
+
+    setDocuments(list => list.filter(d => d.id !== doc.id))
+    setDeletingId(null)
+  }
+
   function updateField(field: keyof Extracted, value: string) {
     if (!extracted) return
     setExtracted({ ...extracted, [field]: value })
   }
 
+  const requirementName = (id: string | null) => requirements.find(r => r.id === id)?.name
+  const employeeName = (id: string | null) => employees.find(e => e.id === id)?.name
+
   return (
-    <div style={{ maxWidth: 700, margin: '3rem auto', padding: '0 1rem' }}>
-      <h1 style={{ marginBottom: '1.5rem' }}>Documents</h1>
+    <main style={{ maxWidth: 900, margin: '0 auto', padding: '2.5rem 1.75rem 4rem' }}>
+      <h1 style={{ fontSize: '1.75rem', margin: '0 0 0.35rem' }}>Documents</h1>
+      <p style={{ margin: '0 0 1.5rem', color: 'var(--ink-soft)', fontSize: '0.95rem' }}>
+        Upload licenses and certificates. AI reads the expiration date for you.
+      </p>
 
       {preselectedRequirement && (
-        <p style={{ background: '#fef3c7', padding: '0.75rem 1rem', borderRadius: 8, marginBottom: '1rem' }}>
-          Uploading a renewal for a specific requirement — it's pre-selected below.
-        </p>
+        <div style={{ background: 'var(--signal-amber-bg)', color: 'var(--signal-amber)', border: '1px solid var(--line)', padding: '0.8rem 1rem', borderRadius: 10, marginBottom: '1rem', fontSize: '0.9rem' }}>
+          Uploading a renewal for <strong>{requirementName(preselectedRequirement) || 'this requirement'}</strong>. It’s pre-selected below.
+        </div>
       )}
 
-      <form onSubmit={handleUpload} style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: '2rem', padding: '1rem', border: '1px solid #eee', borderRadius: 8 }}>
-        <label>
-          Employee (optional)
-          <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} style={{ width: '100%', padding: '0.5rem', marginTop: 4 }}>
+      {/* Upload */}
+      <form
+        onSubmit={handleUpload}
+        style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, alignItems: 'end', padding: '1.25rem', marginBottom: '1.5rem' }}
+      >
+        <label style={labelStyle}>
+          Employee <span style={{ fontWeight: 400 }}>(optional)</span>
+          <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} style={fieldStyle}>
             <option value="">None</option>
-            {employees.map((emp) => (
-              <option key={emp.id} value={emp.id}>{emp.name}</option>
-            ))}
+            {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
           </select>
         </label>
-        <label>
-          Requirement (optional)
-          <select value={requirementId} onChange={(e) => setRequirementId(e.target.value)} style={{ width: '100%', padding: '0.5rem', marginTop: 4 }}>
+        <label style={labelStyle}>
+          Requirement <span style={{ fontWeight: 400 }}>(optional)</span>
+          <select value={requirementId} onChange={e => setRequirementId(e.target.value)} style={fieldStyle}>
             <option value="">None</option>
-            {requirements.map((req) => (
-              <option key={req.id} value={req.id}>{req.name}</option>
-            ))}
+            {requirements.map(req => <option key={req.id} value={req.id}>{req.name}</option>)}
           </select>
         </label>
-        <input type="file" accept=".pdf,image/*" onChange={(e) => setFile(e.target.files?.[0] || null)} required />
-        <button type="submit" disabled={uploading} style={{ padding: '0.6rem', background: '#000', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
-          {uploading ? 'Uploading...' : 'Upload Document'}
+        <label style={labelStyle}>
+          File (PDF or image)
+          <input id="file-input" type="file" accept=".pdf,image/*" onChange={e => setFile(e.target.files?.[0] || null)} required style={{ ...fieldStyle, padding: '0.45rem' }} />
+        </label>
+        <button type="submit" disabled={uploading} style={{ ...primaryButton, opacity: uploading ? 0.7 : 1 }}>
+          {uploading ? 'Uploading…' : 'Upload document'}
         </button>
       </form>
 
+      {/* List */}
       {loading ? (
-        <p>Loading...</p>
+        <p style={{ color: 'var(--ink-soft)' }}>Loading…</p>
       ) : documents.length === 0 ? (
-        <p>No documents uploaded yet.</p>
+        <div style={{ ...card, padding: '2.5rem', textAlign: 'center', color: 'var(--ink-soft)' }}>
+          No documents uploaded yet.
+        </div>
       ) : (
-        <ul style={{ listStyle: 'none', padding: 0 }}>
-          {documents.map((doc) => (
-            <li key={doc.id} style={{ padding: '0.75rem 0', borderBottom: '1px solid #f0f0f0' }}>
-              <a href={doc.file_url} target="_blank" rel="noopener noreferrer">
-                {doc.file_url.split('/').pop()}
-              </a>
-              <span style={{ color: '#888', marginLeft: 8, fontSize: '0.85rem' }}>({doc.document_type})</span>
-              <button
-                onClick={() => handleAnalyze(doc)}
-                disabled={analyzingDocId === doc.id}
-                style={{ marginLeft: 12, padding: '0.25rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer' }}
+        <div style={{ ...card, overflow: 'hidden' }}>
+          {documents.map((doc, i) => {
+            const details = [
+              requirementName(doc.requirement_id) && `For: ${requirementName(doc.requirement_id)}`,
+              employeeName(doc.employee_id),
+              `Uploaded ${formatDate(doc.uploaded_at)}`,
+            ].filter(Boolean).join(' · ')
+            return (
+              <div
+                key={doc.id}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap',
+                  padding: '0.9rem 1.1rem', borderBottom: i === documents.length - 1 ? 'none' : '1px solid var(--line)',
+                  opacity: deletingId === doc.id ? 0.4 : 1,
+                }}
               >
-                {analyzingDocId === doc.id ? 'Analyzing...' : 'Analyze with AI'}
-              </button>
-            </li>
-          ))}
-        </ul>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontWeight: 500, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {fileNameFromUrl(doc.file_url)}
+                  </div>
+                  <div style={{ color: 'var(--ink-soft)', fontSize: '0.82rem', marginTop: 2 }}>{details}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => window.open(doc.file_url, '_blank', 'noopener')} style={smallButton}>View</button>
+                  <button
+                    onClick={() => handleAnalyze(doc)}
+                    disabled={analyzingDocId === doc.id}
+                    style={{ ...smallButton, background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)' }}
+                  >
+                    {analyzingDocId === doc.id ? 'Analyzing…' : 'Analyze with AI'}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(doc)}
+                    disabled={deletingId === doc.id}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--signal-red-bg)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
+                    style={{ ...smallButton, border: 'none', background: 'none', color: 'var(--signal-red)' }}
+                  >
+                    {deletingId === doc.id ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       )}
 
+      {/* Review modal */}
       {reviewDoc && extracted && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: '#fff', padding: '1.5rem', borderRadius: 12, width: 340, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <h2 style={{ marginBottom: 4 }}>Review Extracted Info</h2>
-            <p style={{ fontSize: '0.85rem', color: '#888', marginTop: 0 }}>
-              Confidence: {Math.round((extracted.confidence || 0) * 100)}% — check these before saving.
-            </p>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,37,48,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }}>
+          <div style={{ ...card, padding: '1.5rem', width: 400, maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 20px 50px rgba(28,37,48,0.25)' }}>
+            <div>
+              <h2 style={{ margin: '0 0 0.25rem', fontSize: '1.15rem' }}>Review extracted info</h2>
+              <p style={{ fontSize: '0.85rem', color: 'var(--ink-soft)', margin: 0 }}>
+                AI confidence: <strong>{Math.round((extracted.confidence || 0) * 100)}%</strong>. Check these before saving.
+              </p>
+            </div>
 
-            <label>
-              Document Type
-              <input value={extracted.document_type || ''} onChange={(e) => updateField('document_type', e.target.value)} style={{ width: '100%', padding: '0.5rem', marginTop: 4 }} />
+            <label style={labelStyle}>
+              Document type
+              <input value={extracted.document_type || ''} onChange={e => updateField('document_type', e.target.value)} style={fieldStyle} />
             </label>
-            <label>
+            <label style={labelStyle}>
               Employee
-              <input value={extracted.employee || ''} onChange={(e) => updateField('employee', e.target.value)} style={{ width: '100%', padding: '0.5rem', marginTop: 4 }} />
+              <input value={extracted.employee || ''} onChange={e => updateField('employee', e.target.value)} style={fieldStyle} />
             </label>
-            <label>
-              Expiration Date
-              <input type="date" value={extracted.expiration_date || ''} onChange={(e) => updateField('expiration_date', e.target.value)} style={{ width: '100%', padding: '0.5rem', marginTop: 4 }} />
+            <label style={labelStyle}>
+              Expiration date
+              <input type="date" value={extracted.expiration_date || ''} onChange={e => updateField('expiration_date', e.target.value)} style={fieldStyle} />
             </label>
-            <label>
-              Issuing Authority
-              <input value={extracted.issuing_authority || ''} onChange={(e) => updateField('issuing_authority', e.target.value)} style={{ width: '100%', padding: '0.5rem', marginTop: 4 }} />
+            <label style={labelStyle}>
+              Issuing authority
+              <input value={extracted.issuing_authority || ''} onChange={e => updateField('issuing_authority', e.target.value)} style={fieldStyle} />
             </label>
 
             {reviewDoc.requirement_id && (
-              <p style={{ fontSize: '0.8rem', color: '#888' }}>
-                Confirming will archive the old document for this requirement and update its expiration date.
+              <p style={{ fontSize: '0.82rem', color: 'var(--ink-soft)', margin: 0 }}>
+                Saving will archive the old document for this requirement and update its expiration date.
               </p>
             )}
 
-            <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-              <button onClick={handleConfirm} style={{ flex: 1, padding: '0.6rem', background: '#000', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
-                Confirm & Save
-              </button>
-              <button onClick={() => { setReviewDoc(null); setExtracted(null) }} style={{ flex: 1, padding: '0.6rem', border: '1px solid #000', borderRadius: 8, background: '#fff', cursor: 'pointer' }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+              <button onClick={handleConfirm} style={{ ...primaryButton, flex: 1 }}>Confirm &amp; save</button>
+              <button
+                onClick={() => { setReviewDoc(null); setExtracted(null) }}
+                style={{ ...primaryButton, flex: 1, background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--line)' }}
+              >
                 Cancel
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </main>
   )
 }
