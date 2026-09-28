@@ -1,58 +1,45 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { NextResponse } from 'next/server'
+import { supabaseAdmin, getOrgFromRequest } from '@/lib/supabaseAdmin'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-function daysUntil(dateStr: string) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const target = new Date(dateStr)
-  target.setHours(0, 0, 0, 0)
-  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+function daysUntil(expiration: string, today: string) {
+  return Math.round((Date.parse(expiration.slice(0, 10)) - Date.parse(today)) / 86_400_000)
 }
 
-function reminderThreshold(schedule: string) {
-  const match = schedule.match(/\d+/)
+function firstReminderDays(schedule: string | null) {
+  const match = schedule?.match(/\d+/)
   return match ? parseInt(match[0], 10) : 30
 }
 
-export async function POST(request: NextRequest) {
-  const { organizationId } = await request.json()
+// Recalculates statuses for the LOGGED-IN user's organization only.
+export async function POST(req: Request) {
+  const auth = await getOrgFromRequest(req)
+  if (!auth) return NextResponse.json({ error: 'Not logged in' }, { status: 401 })
 
-  if (!organizationId) {
-    return NextResponse.json({ error: 'No organization provided' }, { status: 400 })
-  }
-
-  const { data: requirements, error } = await supabase
+  const { data: requirements, error } = await supabaseAdmin
     .from('requirements')
-    .select('*')
-    .eq('organization_id', organizationId)
+    .select('id, expiration_date, status, reminder_schedule')
+    .eq('organization_id', auth.organizationId)
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  const today = new Date().toISOString().slice(0, 10)
   let updated = 0
 
-  for (const req of requirements || []) {
-    if (!req.expiration_date) continue
-
-    const days = daysUntil(req.expiration_date)
-    const threshold = reminderThreshold(req.reminder_schedule || '30 days before')
+  for (const r of requirements ?? []) {
+    if (!r.expiration_date) continue
+    const days = daysUntil(r.expiration_date, today)
+    const threshold = firstReminderDays(r.reminder_schedule)
 
     let status = 'active'
     if (days < 0) status = 'overdue'
     else if (days === 0) status = 'expired'
     else if (days <= threshold) status = 'expiring_soon'
 
-    if (status !== req.status) {
-      await supabase.from('requirements').update({ status }).eq('id', req.id)
+    if (status !== r.status) {
+      await supabaseAdmin.from('requirements').update({ status }).eq('id', r.id)
       updated++
     }
   }
 
-  return NextResponse.json({ checked: requirements?.length || 0, updated })
+  return NextResponse.json({ checked: requirements?.length ?? 0, updated })
 }

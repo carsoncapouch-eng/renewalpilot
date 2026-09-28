@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentOrganizationId } from '@/lib/getOrganization'
+import { authedPost } from '@/lib/authedPost'
 
 type Requirement = {
   id: string
@@ -93,16 +94,11 @@ export default function DashboardPage() {
         <a href="/requirements" style={{ ...buttonBase, background: 'var(--ink)', color: '#fff', border: 'none' }}>
           + Add Requirement
         </a>
-        <a href="/documents" style={buttonBase}>Upload Document</a>
-        <button
+               <button
           onClick={async () => {
-            if (!orgId) return
-            const res = await fetch('/api/check-renewals', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ organizationId: orgId }),
-            })
+            const res = await authedPost('/api/check-renewals')
             const result = await res.json()
+            if (result.error) { alert(`Error: ${result.error}`); return }
             alert(`Checked ${result.checked} requirements, updated ${result.updated} statuses.`)
             window.location.reload()
           }}
@@ -112,20 +108,13 @@ export default function DashboardPage() {
         </button>
         <button
           onClick={async () => {
-            if (!orgId) return
-            const email = prompt('Send reminder emails to which address?')
-            if (!email) return
-            const res = await fetch('/api/send-reminders', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ to: email, organizationId: orgId }),
-            })
+            const res = await authedPost('/api/send-reminders')
             const result = await res.json()
-            alert(result.error ? `Error: ${result.error}` : `Sent ${result.sent} reminder email(s).`)
+            alert(result.error ? `Error: ${result.error}` : `Sent ${result.sent} reminder email(s) to ${result.to}.`)
           }}
           style={buttonBase}
         >
-          Send Reminder Emails
+          Email Me Reminders
         </button>
       </div>
     </div>
