@@ -37,17 +37,17 @@ const smallButton: React.CSSProperties = {
 const fieldStyle: React.CSSProperties = { width: '100%', padding: '0.6rem 0.75rem', fontSize: '0.92rem', marginTop: 4 }
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--ink-soft)' }
 
-// "1727470000000-driver license.pdf" → "driver license.pdf"
+// "org-id/1727470000000-driver license.pdf" → "driver license.pdf"
 function fileNameFromUrl(url: string) {
   const raw = decodeURIComponent(url.split('/').pop() || 'document')
   return raw.replace(/^\d+-/, '')
 }
 
-// Public URL → path inside the "documents" storage bucket
+// Older rows stored a full public URL; newer rows store just the storage path.
 function storagePathFromUrl(url: string) {
   const marker = '/object/public/documents/'
   const i = url.indexOf(marker)
-  return i === -1 ? null : decodeURIComponent(url.slice(i + marker.length))
+  return i === -1 ? url : decodeURIComponent(url.slice(i + marker.length))
 }
 
 function formatDate(d: string) {
@@ -107,7 +107,8 @@ function DocumentsContent() {
     if (!file || !orgId) return
     setUploading(true)
 
-    const filePath = `${Date.now()}-${file.name}`
+    // Each organization's files live in their own private folder
+    const filePath = `${orgId}/${Date.now()}-${file.name}`
     const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, file)
 
     if (uploadError) {
@@ -116,12 +117,10 @@ function DocumentsContent() {
       return
     }
 
-    const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath)
-
     const { error } = await supabase.from('documents').insert({
       employee_id: employeeId || null,
       requirement_id: requirementId || null,
-      file_url: urlData.publicUrl,
+      file_url: filePath, // private storage path (not a public link)
       document_type: file.type,
       organization_id: orgId,
     })
@@ -136,9 +135,24 @@ function DocumentsContent() {
     loadData()
   }
 
+  async function handleView(doc: Document) {
+    // Open the tab right away (so pop-up blockers allow it), then load a 60-second private link
+    const tab = window.open('', '_blank')
+    const { data, error } = await supabase.storage
+      .from('documents')
+      .createSignedUrl(storagePathFromUrl(doc.file_url), 60)
+    if (error || !data) {
+      tab?.close()
+      alert('Could not open this file. If it was uploaded before files were made private, delete it and upload it again.')
+      return
+    }
+    if (tab) tab.location.href = data.signedUrl
+    else window.location.href = data.signedUrl
+  }
+
   async function handleAnalyze(doc: Document) {
     setAnalyzingDocId(doc.id)
-    const res = await authedPost('/api/analyze-document', { fileUrl: doc.file_url })
+    const res = await authedPost('/api/analyze-document', { documentId: doc.id })
     const result = await res.json()
     setAnalyzingDocId(null)
 
@@ -184,11 +198,9 @@ function DocumentsContent() {
 
     setDeletingId(doc.id)
     // Remove the actual file from storage (if this fails, still remove the record)
-    const path = storagePathFromUrl(doc.file_url)
-    if (path) {
-      const { error: storageError } = await supabase.storage.from('documents').remove([path])
-      if (storageError) console.warn('Could not remove file from storage:', storageError.message)
-    }
+    const { error: storageError } = await supabase.storage.from('documents').remove([storagePathFromUrl(doc.file_url)])
+    if (storageError) console.warn('Could not remove file from storage:', storageError.message)
+
     const { error } = await supabase.from('documents').delete().eq('id', doc.id)
     if (error) { alert(`Couldn't delete document: ${error.message}`); setDeletingId(null); return }
 
@@ -276,7 +288,7 @@ function DocumentsContent() {
                   <div style={{ color: 'var(--ink-soft)', fontSize: '0.82rem', marginTop: 2 }}>{details}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={() => window.open(doc.file_url, '_blank', 'noopener')} style={smallButton}>View</button>
+                  <button onClick={() => handleView(doc)} style={smallButton}>View</button>
                   <button
                     onClick={() => handleAnalyze(doc)}
                     disabled={analyzingDocId === doc.id}
