@@ -49,7 +49,7 @@ export async function GET(req: Request) {
 
   const { data: requirements, error } = await supabaseAdmin
     .from('requirements')
-    .select('id, name, expiration_date, status, reminder_schedule, organization_id, last_reminder_date, upload_token, responsible_name, responsible_email, employees(name, email)')
+    .select('id, name, expiration_date, status, reminder_schedule, organization_id, last_reminder_date, upload_token, responsible_name, responsible_email, employees(name, email, active)')
     .not('expiration_date', 'is', null)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -80,6 +80,12 @@ export async function GET(req: Request) {
   const skipped: object[] = []
 
   for (const r of requirements ?? []) {
+    const emp = (Array.isArray(r.employees) ? r.employees[0] : r.employees) as
+      { name?: string; email?: string; active?: boolean | null } | null
+
+    // Inactive employee → their requirements are paused (no status changes, no emails)
+    if (emp && emp.active === false) continue
+
     const threshold = firstReminderDays(r.reminder_schedule)
     const days = daysUntil(r.expiration_date, today)
 
@@ -99,7 +105,6 @@ export async function GET(req: Request) {
     }
 
     // Employee requirement → the employee; company-wide → the responsible person
-    const emp = (Array.isArray(r.employees) ? r.employees[0] : r.employees) as { name?: string; email?: string } | null
     const personEmail = emp?.email ?? r.responsible_email
     const personName = emp?.name ?? r.responsible_name ?? 'Company-wide'
 

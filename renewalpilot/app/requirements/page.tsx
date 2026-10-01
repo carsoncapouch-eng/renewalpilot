@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentOrganizationId } from '@/lib/getOrganization'
 
-type Employee = { id: string; name: string }
+type Employee = { id: string; name: string; active: boolean | null }
 type Requirement = {
   id: string
   name: string
@@ -23,6 +23,7 @@ const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   expiring_soon: { label: 'Expiring soon', color: 'var(--signal-amber)', bg: 'var(--signal-amber-bg)' },
   expired:       { label: 'Expired',       color: 'var(--signal-red)',   bg: 'var(--signal-red-bg)' },
   overdue:       { label: 'Overdue',       color: 'var(--signal-red)',   bg: 'var(--signal-red-bg)' },
+  paused:        { label: 'Paused',        color: 'var(--ink-soft)',     bg: 'var(--paper)' },
 }
 
 const primaryButton: React.CSSProperties = {
@@ -67,7 +68,7 @@ export default function RequirementsPage() {
       setLoading(false)
       return
     }
-    const { data: emps } = await supabase.from('employees').select('id, name').eq('organization_id', organizationId).order('name')
+    const { data: emps } = await supabase.from('employees').select('id, name, active').eq('organization_id', organizationId).order('name')
     const { data: reqs } = await supabase.from('requirements').select('*').eq('organization_id', organizationId).order('expiration_date')
     setEmployees(emps || [])
     setRequirements(reqs || [])
@@ -104,7 +105,11 @@ export default function RequirementsPage() {
   }
 
   function assignedTo(req: Requirement) {
-    if (req.employee_id) return employees.find(e => e.id === req.employee_id)?.name || 'Unknown'
+    if (req.employee_id) {
+      const emp = employees.find(e => e.id === req.employee_id)
+      if (!emp) return 'Unknown'
+      return emp.active === false ? `${emp.name} (inactive)` : emp.name
+    }
     return req.responsible_name || req.responsible_email || 'Company'
   }
 
@@ -159,7 +164,7 @@ export default function RequirementsPage() {
               <option value="">Select…</option>
               <option value={COMPANY}>Company-wide (not tied to an employee)</option>
               <optgroup label="Employees">
-                {employees.map(emp => (
+                {employees.filter(emp => emp.active !== false).map(emp => (
                   <option key={emp.id} value={emp.id}>{emp.name}</option>
                 ))}
               </optgroup>
@@ -233,7 +238,7 @@ export default function RequirementsPage() {
                     key={req.id}
                     style={{
                       borderBottom: i === requirements.length - 1 ? 'none' : '1px solid var(--line)',
-                      opacity: deletingId === req.id ? 0.4 : 1,
+                      opacity: deletingId === req.id ? 0.4 : req.status === 'paused' ? 0.6 : 1,
                     }}
                   >
                     <td style={{ ...td, fontWeight: 500 }}>{req.name}</td>
@@ -247,7 +252,7 @@ export default function RequirementsPage() {
                     </td>
                     <td style={td} className="mono">{formatDate(req.expiration_date)}</td>
                     <td style={td}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '3px 10px', borderRadius: 999, color: s.color, background: s.bg, whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '3px 10px', borderRadius: 999, color: s.color, background: s.bg, whiteSpace: 'nowrap', border: req.status === 'paused' ? '1px solid var(--line)' : 'none' }}>
                         {s.label}
                       </span>
                     </td>
