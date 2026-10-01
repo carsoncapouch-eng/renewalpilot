@@ -49,7 +49,7 @@ export async function GET(req: Request) {
 
   const { data: requirements, error } = await supabaseAdmin
     .from('requirements')
-    .select('id, name, expiration_date, status, reminder_schedule, organization_id, last_reminder_date, upload_token, employees(name, email)')
+    .select('id, name, expiration_date, status, reminder_schedule, organization_id, last_reminder_date, upload_token, responsible_name, responsible_email, employees(name, email)')
     .not('expiration_date', 'is', null)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -98,19 +98,23 @@ export async function GET(req: Request) {
       continue
     }
 
+    // Employee requirement → the employee; company-wide → the responsible person
     const emp = (Array.isArray(r.employees) ? r.employees[0] : r.employees) as { name?: string; email?: string } | null
-    const recipients = [...new Set([emp?.email, ...(await adminEmails(r.organization_id))].filter(Boolean))] as string[]
+    const personEmail = emp?.email ?? r.responsible_email
+    const personName = emp?.name ?? r.responsible_name ?? 'Company-wide'
+
+    const recipients = [...new Set([personEmail, ...(await adminEmails(r.organization_id))].filter(Boolean))] as string[]
     if (recipients.length === 0) {
-      skipped.push({ requirement: r.name, reason: 'No email for employee or admins' })
+      skipped.push({ requirement: r.name, reason: 'No email for the responsible person or admins' })
       continue
     }
 
     const { subject, html } = buildEmail({
       name: r.name,
-      person: emp?.name || 'Unassigned',
+      person: personName,
       expiration: r.expiration_date,
       days,
-      link: `${appUrl}/upload/${r.upload_token}`, // employee upload page, no login needed
+      link: `${appUrl}/upload/${r.upload_token}`, // upload page, no login needed
     })
 
     if (dryRun) {

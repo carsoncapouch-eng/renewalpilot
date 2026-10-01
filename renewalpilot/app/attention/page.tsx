@@ -167,7 +167,7 @@ export default function AttentionPage() {
       .select('id', { count: 'exact', head: true })
       .eq('requirement_id', req.id)
 
-    const who = req.employees?.name || 'Unassigned'
+    const who = req.employees?.name || 'Company-wide'
     const message = count
       ? `Delete "${req.name}" for ${who}?\n\nThis will also permanently remove ${count} document${count === 1 ? '' : 's'}. This can't be undone.`
       : `Delete "${req.name}" for ${who}? This can't be undone.`
@@ -203,7 +203,7 @@ export default function AttentionPage() {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
             {req.name}
-            <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}> · {req.employees?.name || 'Unassigned'}</span>
+            <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}> · {req.employees?.name || 'Company-wide'}</span>
             {uploaded && (
               <span style={{ marginLeft: 8, fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--signal-green-bg)', color: 'var(--signal-green)' }}>
                 Renewal uploaded
@@ -284,7 +284,7 @@ export default function AttentionPage() {
                   <div>
                     <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
                       {p.requirements?.name ?? 'Document'}
-                      <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}> · {p.requirements?.employees?.name ?? 'Unassigned'}</span>
+                      <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}> · {p.requirements?.employees?.name ?? 'Company-wide'}</span>
                     </div>
                     <div style={{ color: 'var(--ink-soft)', fontSize: '0.84rem', marginTop: 2 }}>
                       Uploaded {timeAgo(p.uploaded_at)}{oldDate ? ` · Current expiration ${prettyDate(oldDate)}` : ''}

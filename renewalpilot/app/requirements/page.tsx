@@ -10,9 +10,13 @@ type Requirement = {
   type: string
   expiration_date: string | null
   reminder_schedule: string
-  employee_id: string
+  employee_id: string | null
+  responsible_name: string | null
+  responsible_email: string | null
   status: string | null
 }
+
+const COMPANY = 'company'
 
 const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   active:        { label: 'Active',        color: 'var(--signal-green)', bg: 'var(--signal-green-bg)' },
@@ -45,12 +49,16 @@ export default function RequirementsPage() {
   const [requirements, setRequirements] = useState<Requirement[]>([])
   const [showForm, setShowForm] = useState(false)
   const [employeeId, setEmployeeId] = useState('')
+  const [responsibleName, setResponsibleName] = useState('')
+  const [responsibleEmail, setResponsibleEmail] = useState('')
   const [name, setName] = useState('')
   const [expirationDate, setExpirationDate] = useState('')
   const [reminderSchedule, setReminderSchedule] = useState('30 days before')
   const [loading, setLoading] = useState(true)
   const [orgId, setOrgId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const isCompany = employeeId === COMPANY
 
   async function loadData() {
     const organizationId = await getCurrentOrganizationId()
@@ -74,7 +82,9 @@ export default function RequirementsPage() {
     e.preventDefault()
     if (!orgId) return
     const { error } = await supabase.from('requirements').insert({
-      employee_id: employeeId,
+      employee_id: isCompany ? null : employeeId,
+      responsible_name: isCompany ? responsibleName.trim() || null : null,
+      responsible_email: isCompany ? responsibleEmail.trim() || null : null,
       name,
       type: name,
       expiration_date: expirationDate,
@@ -84,11 +94,18 @@ export default function RequirementsPage() {
     })
     if (error) { alert(`Couldn't add requirement: ${error.message}`); return }
     setEmployeeId('')
+    setResponsibleName('')
+    setResponsibleEmail('')
     setName('')
     setExpirationDate('')
     setReminderSchedule('30 days before')
     setShowForm(false)
     loadData()
+  }
+
+  function assignedTo(req: Requirement) {
+    if (req.employee_id) return employees.find(e => e.id === req.employee_id)?.name || 'Unknown'
+    return req.responsible_name || req.responsible_email || 'Company'
   }
 
   async function handleDelete(req: Requirement) {
@@ -97,7 +114,7 @@ export default function RequirementsPage() {
       .select('id', { count: 'exact', head: true })
       .eq('requirement_id', req.id)
 
-    const who = employeeName(req.employee_id)
+    const who = assignedTo(req)
     const message = count
       ? `Delete "${req.name}" for ${who}?\n\nThis will also permanently remove ${count} document${count === 1 ? '' : 's'}. This can't be undone.`
       : `Delete "${req.name}" for ${who}? This can't be undone.`
@@ -113,17 +130,13 @@ export default function RequirementsPage() {
     setDeletingId(null)
   }
 
-  function employeeName(id: string) {
-    return employees.find(e => e.id === id)?.name || 'Unknown'
-  }
-
   return (
     <main style={{ maxWidth: 1000, margin: '0 auto', padding: '2.5rem 1.75rem 4rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', margin: '0 0 0.35rem' }}>Requirements</h1>
           <p style={{ margin: 0, color: 'var(--ink-soft)', fontSize: '0.95rem' }}>
-            Licenses, certifications and training your team needs to keep current.
+            Licenses, certifications, insurance and permits to keep current.
           </p>
         </div>
         <button onClick={() => setShowForm(!showForm)} style={primaryButton}>
@@ -141,17 +154,40 @@ export default function RequirementsPage() {
           }}
         >
           <label style={labelStyle}>
-            Employee
+            Belongs to
             <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} required style={fieldStyle}>
-              <option value="">Select an employee</option>
-              {employees.map(emp => (
-                <option key={emp.id} value={emp.id}>{emp.name}</option>
-              ))}
+              <option value="">Select…</option>
+              <option value={COMPANY}>Company-wide (not tied to an employee)</option>
+              <optgroup label="Employees">
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>{emp.name}</option>
+                ))}
+              </optgroup>
             </select>
           </label>
+
+          {isCompany && (
+            <>
+              <label style={labelStyle}>
+                Responsible person
+                <input placeholder="e.g. Office manager’s name" value={responsibleName} onChange={e => setResponsibleName(e.target.value)} style={fieldStyle} />
+              </label>
+              <label style={labelStyle}>
+                Their email (gets reminders)
+                <input type="email" placeholder="name@company.com" value={responsibleEmail} onChange={e => setResponsibleEmail(e.target.value)} required style={fieldStyle} />
+              </label>
+            </>
+          )}
+
           <label style={labelStyle}>
             Requirement
-            <input placeholder="e.g. CPR Certification" value={name} onChange={e => setName(e.target.value)} required style={fieldStyle} />
+            <input
+              placeholder={isCompany ? 'e.g. General Liability Insurance' : 'e.g. CPR Certification'}
+              value={name}
+              onChange={e => setName(e.target.value)}
+              required
+              style={fieldStyle}
+            />
           </label>
           <label style={labelStyle}>
             Expiration date
@@ -182,7 +218,7 @@ export default function RequirementsPage() {
             <thead>
               <tr style={{ borderBottom: '1px solid var(--line)', background: 'var(--paper)' }}>
                 <th style={th}>Requirement</th>
-                <th style={th}>Employee</th>
+                <th style={th}>Assigned to</th>
                 <th style={th}>Expires</th>
                 <th style={th}>Status</th>
                 <th style={th}>First reminder</th>
@@ -201,7 +237,14 @@ export default function RequirementsPage() {
                     }}
                   >
                     <td style={{ ...td, fontWeight: 500 }}>{req.name}</td>
-                    <td style={{ ...td, color: 'var(--ink-soft)' }}>{employeeName(req.employee_id)}</td>
+                    <td style={{ ...td, color: 'var(--ink-soft)' }}>
+                      {!req.employee_id && (
+                        <span style={{ fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--paper)', border: '1px solid var(--line)', color: 'var(--accent)', marginRight: 6 }}>
+                          Company
+                        </span>
+                      )}
+                      {assignedTo(req)}
+                    </td>
                     <td style={td} className="mono">{formatDate(req.expiration_date)}</td>
                     <td style={td}>
                       <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '3px 10px', borderRadius: 999, color: s.color, background: s.bg, whiteSpace: 'nowrap' }}>
