@@ -8,8 +8,9 @@ type Requirement = {
   id: string
   name: string
   expiration_date: string | null
-  status: string
+  status: string | null
   employee_id: string | null
+  responsible_name: string | null
   employees: { name: string } | null
 }
 
@@ -19,7 +20,7 @@ type Pending = {
   uploaded_at: string
   requirement_id: string | null
   extracted: { expiration_date?: string | null; confidence?: number } | null
-  requirements: { name: string; expiration_date: string | null; employees: { name: string } | null } | null
+  requirements: { name: string; expiration_date: string | null; responsible_name: string | null; employees: { name: string } | null } | null
 }
 
 const smallButton: React.CSSProperties = {
@@ -70,9 +71,14 @@ function statusForDate(date: string) {
   return 'active'
 }
 
+function personFor(req: { employees: { name: string } | null; responsible_name: string | null } | null) {
+  return req?.employees?.name || req?.responsible_name || 'Company-wide'
+}
+
 export default function AttentionPage() {
   const router = useRouter()
   const [requirements, setRequirements] = useState<Requirement[]>([])
+  const [withDocument, setWithDocument] = useState<Set<string>>(new Set())
   const [pending, setPending] = useState<Pending[]>([])
   const [reviewDates, setReviewDates] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -85,22 +91,33 @@ export default function AttentionPage() {
       return
     }
 
+    // All requirements except paused ones (inactive employees)
     const { data: reqs } = await supabase
       .from('requirements')
       .select('*, employees(name)')
       .eq('organization_id', organizationId)
-      .or('status.in.(overdue,expired,expiring_soon),expiration_date.is.null')
+      .or('status.is.null,status.neq.paused')
       .order('expiration_date')
+
+    // Which requirements have a current, approved document on file
+    const { data: docs } = await supabase
+      .from('documents')
+      .select('requirement_id')
+      .eq('organization_id', organizationId)
+      .eq('archived', false)
+      .eq('status', 'approved')
+      .not('requirement_id', 'is', null)
 
     const { data: pend } = await supabase
       .from('documents')
-      .select('id, file_url, uploaded_at, requirement_id, extracted, requirements(name, expiration_date, employees(name))')
+      .select('id, file_url, uploaded_at, requirement_id, extracted, requirements(name, expiration_date, responsible_name, employees(name))')
       .eq('organization_id', organizationId)
       .eq('status', 'pending_review')
       .order('uploaded_at')
 
     const pendingList = (pend ?? []) as unknown as Pending[]
-    setRequirements(reqs || [])
+    setRequirements((reqs ?? []) as Requirement[])
+    setWithDocument(new Set((docs ?? []).map(d => d.requirement_id as string)))
     setPending(pendingList)
     // Pre-fill each review box with the date AI found
     setReviewDates(Object.fromEntries(pendingList.map(p => [p.id, p.extracted?.expiration_date?.slice(0, 10) ?? ''])))
@@ -127,8 +144,8 @@ export default function AttentionPage() {
     setBusyId(p.id)
     // 1. Archive the old document(s) for this requirement
     await supabase.from('documents').update({ archived: true }).eq('requirement_id', p.requirement_id).neq('id', p.id)
-    // 2. Mark this upload as approved
-    const { error: docError } = await supabase.from('documents').update({ status: 'approved' }).eq('id', p.id)
+    // 2. Mark this upload as approved and remember its expiration date
+    const { error: docError } = await supabase.from('documents').update({ status: 'approved', expiration_date: newDate }).eq('id', p.id)
     // 3. Update the requirement and start a fresh cycle with a new upload link
     const { error: reqError } = await supabase
       .from('requirements')
@@ -167,7 +184,7 @@ export default function AttentionPage() {
       .select('id', { count: 'exact', head: true })
       .eq('requirement_id', req.id)
 
-    const who = req.employees?.name || 'Company-wide'
+    const who = personFor(req)
     const message = count
       ? `Delete "${req.name}" for ${who}?\n\nThis will also permanently remove ${count} document${count === 1 ? '' : 's'}. This can't be undone.`
       : `Delete "${req.name}" for ${who}? This can't be undone.`
@@ -184,12 +201,17 @@ export default function AttentionPage() {
   }
 
   const pendingReqIds = new Set(pending.map(p => p.requirement_id))
-  const overdue = requirements.filter(r => r.expiration_date && (r.status === 'overdue' || r.status === 'expired'))
-  const expiringSoon = requirements.filter(r => r.expiration_date && r.status === 'expiring_soon')
-  const missing = requirements.filter(r => !r.expiration_date)
+  const overdue = requirements.filter(r => r.status === 'overdue' || r.status === 'expired')
+  const expiringSoon = requirements.filter(r => r.status === 'expiring_soon')
+  // Not urgent yet, but we have no document on file (and none waiting for review)
+  const missing = requirements.filter(r =>
+    r.status !== 'overdue' && r.status !== 'expired' && r.status !== 'expiring_soon' &&
+    !withDocument.has(r.id) && !pendingReqIds.has(r.id)
+  )
 
   function renderRow(req: Requirement, accent: string) {
     const uploaded = pendingReqIds.has(req.id)
+    const noDoc = !withDocument.has(req.id) && !uploaded
     return (
       <div
         key={req.id}
@@ -203,10 +225,15 @@ export default function AttentionPage() {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
             {req.name}
-            <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}> · {req.employees?.name || 'Company-wide'}</span>
+            <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}> · {personFor(req)}</span>
             {uploaded && (
               <span style={{ marginLeft: 8, fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--signal-green-bg)', color: 'var(--signal-green)' }}>
                 Renewal uploaded
+              </span>
+            )}
+            {noDoc && (
+              <span style={{ marginLeft: 8, fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--paper)', border: '1px solid var(--line)', color: 'var(--ink-soft)' }}>
+                No document
               </span>
             )}
           </div>
@@ -217,7 +244,7 @@ export default function AttentionPage() {
             onClick={() => router.push(`/documents?requirement=${req.id}`)}
             style={{ ...smallButton, background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)' }}
           >
-            Upload renewal
+            {noDoc ? 'Upload document' : 'Upload renewal'}
           </button>
           <button
             onClick={() => handleDelete(req)}
@@ -258,7 +285,7 @@ export default function AttentionPage() {
         <div style={{ background: 'var(--signal-green-bg)', border: '1px solid var(--line)', borderRadius: 12, padding: '2rem', textAlign: 'center' }}>
           <div style={{ fontSize: '1.5rem', marginBottom: 6 }}>✓</div>
           <div style={{ fontWeight: 600, color: 'var(--signal-green)' }}>Everything’s on track</div>
-          <div style={{ color: 'var(--ink-soft)', fontSize: '0.9rem', marginTop: 4 }}>Nothing to review, and nothing is expiring soon or overdue.</div>
+          <div style={{ color: 'var(--ink-soft)', fontSize: '0.9rem', marginTop: 4 }}>Every requirement has a current document, and nothing is expiring soon.</div>
         </div>
       )}
 
@@ -284,7 +311,7 @@ export default function AttentionPage() {
                   <div>
                     <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
                       {p.requirements?.name ?? 'Document'}
-                      <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}> · {p.requirements?.employees?.name ?? 'Company-wide'}</span>
+                      <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}> · {personFor(p.requirements)}</span>
                     </div>
                     <div style={{ color: 'var(--ink-soft)', fontSize: '0.84rem', marginTop: 2 }}>
                       Uploaded {timeAgo(p.uploaded_at)}{oldDate ? ` · Current expiration ${prettyDate(oldDate)}` : ''}
@@ -330,7 +357,7 @@ export default function AttentionPage() {
 
       {section('Overdue', overdue, 'var(--signal-red)')}
       {section('Expiring soon', expiringSoon, 'var(--signal-amber)')}
-      {section('Missing expiration date', missing, 'var(--ink-soft)')}
+      {section('No document on file', missing, 'var(--ink-soft)')}
     </main>
   )
 }

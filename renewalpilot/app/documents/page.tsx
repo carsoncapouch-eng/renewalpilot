@@ -15,6 +15,8 @@ type Document = {
   employee_id: string | null
   archived: boolean
   uploaded_at: string
+  status: string | null
+  expiration_date: string | null
 }
 type Extracted = {
   document_type: string | null
@@ -52,6 +54,16 @@ function storagePathFromUrl(url: string) {
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function formatDay(d: string) {
+  return new Date(d.slice(0, 10) + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+}
+
+// A fingerprint of the file's contents, used to block exact duplicates
+async function fileHash(file: File) {
+  const buf = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
 // Pages that read the URL (?requirement=...) must be wrapped in <Suspense> for Vercel builds
@@ -102,15 +114,37 @@ function DocumentsContent() {
     loadData()
   }, [])
 
+  function resetForm() {
+    setFile(null)
+    setEmployeeId('')
+    setRequirementId('')
+    setUploading(false)
+    const input = document.getElementById('file-input') as HTMLInputElement | null
+    if (input) input.value = ''
+  }
+
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault()
     if (!file || !orgId) return
     setUploading(true)
 
-    // Each organization's files live in their own private folder
+    // 1. Block exact duplicates before uploading anything
+    const hash = await fileHash(file)
+    const { data: existing } = await supabase
+      .from('documents')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('file_hash', hash)
+      .maybeSingle()
+    if (existing) {
+      alert('This exact file has already been uploaded.')
+      setUploading(false)
+      return
+    }
+
+    // 2. Each organization's files live in their own private folder
     const filePath = `${orgId}/${Date.now()}-${file.name}`
     const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, file)
-
     if (uploadError) {
       alert('Upload failed: ' + uploadError.message)
       setUploading(false)
@@ -123,15 +157,14 @@ function DocumentsContent() {
       file_url: filePath, // private storage path (not a public link)
       document_type: file.type,
       organization_id: orgId,
+      file_hash: hash,
     })
-    if (error) alert('Saving the document failed: ' + error.message)
+    if (error) {
+      await supabase.storage.from('documents').remove([filePath])
+      alert(error.code === '23505' ? 'This exact file has already been uploaded.' : 'Saving the document failed: ' + error.message)
+    }
 
-    setFile(null)
-    setEmployeeId('')
-    setRequirementId('')
-    setUploading(false)
-    const input = document.getElementById('file-input') as HTMLInputElement | null
-    if (input) input.value = ''
+    resetForm()
     loadData()
   }
 
@@ -168,8 +201,11 @@ function DocumentsContent() {
   async function handleConfirm() {
     if (!reviewDoc || !extracted) return
 
+    // Save what was confirmed onto the document itself
     await supabase.from('documents').update({
       document_type: extracted.document_type || reviewDoc.document_type,
+      expiration_date: extracted.expiration_date || null,
+      status: 'approved',
     }).eq('id', reviewDoc.id)
 
     if (reviewDoc.requirement_id) {
@@ -183,6 +219,7 @@ function DocumentsContent() {
         await supabase.from('requirements').update({
           expiration_date: extracted.expiration_date,
           status: 'active',
+          last_reminder_date: null,
         }).eq('id', reviewDoc.requirement_id)
       }
     }
@@ -225,7 +262,7 @@ function DocumentsContent() {
 
       {preselectedRequirement && (
         <div style={{ background: 'var(--signal-amber-bg)', color: 'var(--signal-amber)', border: '1px solid var(--line)', padding: '0.8rem 1rem', borderRadius: 10, marginBottom: '1rem', fontSize: '0.9rem' }}>
-          Uploading a renewal for <strong>{requirementName(preselectedRequirement) || 'this requirement'}</strong>. It’s pre-selected below.
+          Uploading a document for <strong>{requirementName(preselectedRequirement) || 'this requirement'}</strong>. It’s pre-selected below.
         </div>
       )}
 
@@ -270,8 +307,10 @@ function DocumentsContent() {
             const details = [
               requirementName(doc.requirement_id) && `For: ${requirementName(doc.requirement_id)}`,
               employeeName(doc.employee_id),
+              doc.expiration_date && `Expires ${formatDay(doc.expiration_date)}`,
               `Uploaded ${formatDate(doc.uploaded_at)}`,
             ].filter(Boolean).join(' · ')
+            const awaitingReview = doc.status === 'pending_review'
             return (
               <div
                 key={doc.id}
@@ -284,6 +323,11 @@ function DocumentsContent() {
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontWeight: 500, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {fileNameFromUrl(doc.file_url)}
+                    {awaitingReview && (
+                      <span style={{ marginLeft: 8, fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--signal-green-bg)', color: 'var(--signal-green)' }}>
+                        Awaiting review
+                      </span>
+                    )}
                   </div>
                   <div style={{ color: 'var(--ink-soft)', fontSize: '0.82rem', marginTop: 2 }}>{details}</div>
                 </div>
