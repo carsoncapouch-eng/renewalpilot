@@ -66,7 +66,7 @@ export default function LoginPage() {
         <label style={labelStyle}>Email</label>
         <input style={inputStyle} type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} required />
         <div style={{ height: '1rem' }} />
-        <label style={labelStyle}>Password</label>        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <label style={labelStyle}>Password</label>
           <Link href="/forgot-password" style={{ fontSize: '0.8rem', color: 'var(--accent)' }}>Forgot password?</Link>
         </div>
