@@ -34,9 +34,14 @@ export async function POST(req: Request) {
       }
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
-      case 'customer.subscription.deleted':
-        await syncSubscription(event.data.object as Stripe.Subscription)
+      case 'customer.subscription.deleted': {
+        // Always fetch the CURRENT subscription from Stripe, so an old or
+        // retried event can never overwrite newer information.
+        const eventSub = event.data.object as Stripe.Subscription
+        const sub = await stripe.subscriptions.retrieve(eventSub.id)
+        await syncSubscription(sub)
         break
+      }
       default:
         break
     }
