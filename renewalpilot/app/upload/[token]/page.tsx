@@ -10,6 +10,12 @@ function pretty(d: string | null) {
   return new Date(d.slice(0, 10) + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
 }
 
+// A fingerprint of the file's contents, used to block exact duplicates
+async function fileHash(file: File) {
+  const buf = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 const shell: React.CSSProperties = {
   minHeight: '100vh', background: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem',
 }
@@ -54,13 +60,14 @@ export default function EmployeeUploadPage() {
     setState('uploading')
     try {
       const contentType = file.type || 'application/octet-stream'
-      // 1. Get a one-time upload slot
-      const { path, uploadToken } = await post({ action: 'start', fileName: file.name, contentType, size: file.size })
+      const hash = await fileHash(file)
+      // 1. Get a one-time upload slot (also checks for duplicates)
+      const { path, uploadToken } = await post({ action: 'start', fileName: file.name, contentType, size: file.size, fileHash: hash })
       // 2. Upload the file straight to private storage
       const { error: uploadError } = await supabase.storage.from('documents').uploadToSignedUrl(path, uploadToken, file, { contentType })
       if (uploadError) throw new Error('Upload failed. Please try again.')
       // 3. Save it and let AI read it
-      const result = await post({ action: 'complete', path, contentType })
+      const result = await post({ action: 'complete', path, contentType, fileHash: hash })
       setFoundDate(result.expiration_date)
       setState('done')
     } catch (err) {
@@ -154,7 +161,7 @@ export default function EmployeeUploadPage() {
             id="upload-file"
             type="file"
             accept="image/*,.pdf"
-            onChange={e => setFile(e.target.files?.[0] || null)}
+            onChange={e => { setFile(e.target.files?.[0] || null); setError('') }}
             style={{ display: 'none' }}
           />
 

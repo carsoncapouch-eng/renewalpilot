@@ -8,6 +8,7 @@ export const maxDuration = 60 // AI reading can take a few seconds
 const resend = new Resend(process.env.RESEND_API_KEY)
 const MAX_BYTES = 10 * 1024 * 1024
 const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+const DUPLICATE_MESSAGE = 'This exact file was already uploaded. Please upload your new document.'
 
 type Ctx = { params: Promise<{ token: string }> }
 
@@ -16,7 +17,7 @@ async function findRequirement(token: string) {
   if (!/^[0-9a-f-]{36}$/i.test(token)) return null
   const { data } = await supabaseAdmin
     .from('requirements')
-    .select('id, name, expiration_date, organization_id, employee_id, employees(name), organizations(name)')
+    .select('id, name, expiration_date, organization_id, employee_id, responsible_name, employees(name), organizations(name)')
     .eq('upload_token', token)
     .single()
   return data
@@ -24,6 +25,10 @@ async function findRequirement(token: string) {
 
 function one<T>(x: T | T[] | null | undefined): T | null {
   return Array.isArray(x) ? x[0] ?? null : x ?? null
+}
+
+function validHash(h: unknown): h is string {
+  return typeof h === 'string' && /^[0-9a-f]{64}$/.test(h)
 }
 
 // GET: show the employee what they're uploading for
@@ -34,7 +39,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 
   return NextResponse.json({
     requirement: r.name,
-    employee: one(r.employees as { name: string } | { name: string }[] | null)?.name ?? null,
+    employee: one(r.employees as { name: string } | { name: string }[] | null)?.name ?? r.responsible_name ?? null,
     organization: one(r.organizations as { name: string } | { name: string }[] | null)?.name ?? null,
     expiration_date: r.expiration_date,
   })
@@ -49,13 +54,25 @@ export async function POST(req: Request, { params }: Ctx) {
   const body = await req.json()
 
   if (body.action === 'start') {
-    const { fileName, contentType, size } = body as { fileName: string; contentType: string; size: number }
+    const { fileName, contentType, size, fileHash } = body as { fileName: string; contentType: string; size: number; fileHash?: string }
     if (!ALLOWED_TYPES.includes(contentType)) {
       return NextResponse.json({ error: 'Please upload a PDF or a photo (JPG or PNG).' }, { status: 400 })
     }
     if (size > MAX_BYTES) {
       return NextResponse.json({ error: 'That file is too large (max 10 MB).' }, { status: 400 })
     }
+
+    // Block exact duplicates before anything is uploaded
+    if (validHash(fileHash)) {
+      const { data: existing } = await supabaseAdmin
+        .from('documents')
+        .select('id')
+        .eq('organization_id', r.organization_id)
+        .eq('file_hash', fileHash)
+        .maybeSingle()
+      if (existing) return NextResponse.json({ error: DUPLICATE_MESSAGE }, { status: 409 })
+    }
+
     const safeName = String(fileName || 'document').replace(/[^\w.\- ]+/g, '_').slice(-100)
     const path = `${r.organization_id}/${Date.now()}-${safeName}`
     const { data, error } = await supabaseAdmin.storage.from('documents').createSignedUploadUrl(path)
@@ -64,7 +81,7 @@ export async function POST(req: Request, { params }: Ctx) {
   }
 
   if (body.action === 'complete') {
-    const { path, contentType } = body as { path: string; contentType: string }
+    const { path, contentType, fileHash } = body as { path: string; contentType: string; fileHash?: string }
     if (!path || !path.startsWith(`${r.organization_id}/`)) {
       return NextResponse.json({ error: 'Invalid upload.' }, { status: 400 })
     }
@@ -80,17 +97,24 @@ export async function POST(req: Request, { params }: Ctx) {
         document_type: contentType,
         status: 'pending_review',
         submitted_by: 'upload_link',
+        file_hash: validHash(fileHash) ? fileHash : null,
       })
       .select('id')
       .single()
-    if (insertError || !doc) return NextResponse.json({ error: 'Could not save your document.' }, { status: 500 })
+
+    if (insertError || !doc) {
+      // Same file uploaded twice at once: remove the extra copy
+      await supabaseAdmin.storage.from('documents').remove([path])
+      if (insertError?.code === '23505') return NextResponse.json({ error: DUPLICATE_MESSAGE }, { status: 409 })
+      return NextResponse.json({ error: 'Could not save your document.' }, { status: 500 })
+    }
 
     // 2. Let AI read it (if this fails, the manager can still enter the date by hand)
     const { data: extracted } = await extractFromStorage(path, contentType)
     if (extracted) await supabaseAdmin.from('documents').update({ extracted }).eq('id', doc.id)
 
     // 3. Tell the organization's admins it's ready for review
-    const employeeName = one(r.employees as { name: string } | { name: string }[] | null)?.name ?? 'An employee'
+    const personName = one(r.employees as { name: string } | { name: string }[] | null)?.name ?? r.responsible_name ?? 'Someone'
     const { data: admins } = await supabaseAdmin
       .from('profiles')
       .select('email')
@@ -104,7 +128,7 @@ export async function POST(req: Request, { params }: Ctx) {
       await resend.emails.send({
         from: process.env.REMINDER_FROM_EMAIL ?? 'RenewalPilot <onboarding@resend.dev>',
         to,
-        subject: `${employeeName} uploaded a new ${r.name}. Ready for review`,
+        subject: `${personName} uploaded a new ${r.name}. Ready for review`,
         html: `
         <div style="background:#f6f5f2;padding:32px 16px;font-family:'IBM Plex Sans',Arial,sans-serif;color:#1c2530">
           <div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #e3e1db;border-radius:12px;overflow:hidden">
@@ -112,7 +136,7 @@ export async function POST(req: Request, { params }: Ctx) {
             <div style="padding:28px">
               <span style="display:inline-block;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:600;color:#3f7d58;background:#eef5f0">Ready for review</span>
               <h1 style="font-size:22px;margin:16px 0 6px;font-weight:600">${r.name}</h1>
-              <p style="margin:0 0 22px;color:#5b6774;font-size:14px">${employeeName} uploaded a renewal.${
+              <p style="margin:0 0 22px;color:#5b6774;font-size:14px">${personName} uploaded a renewal.${
                 extracted?.expiration_date ? ` AI found a new expiration date of <strong style="color:#1c2530">${extracted.expiration_date}</strong>.` : ''
               }</p>
               <a href="${appUrl}/attention" style="display:inline-block;background:#3b5b6b;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;font-size:14px">Review &amp; approve</a>
