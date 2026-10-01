@@ -73,7 +73,7 @@ export default function Header() {
     router.push('/login')
   }
 
-    if (pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname?.startsWith('/upload')) {
+      if (pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password' || pathname === '/reset-password' || pathname?.startsWith('/upload')) {
     return null
   }
 
