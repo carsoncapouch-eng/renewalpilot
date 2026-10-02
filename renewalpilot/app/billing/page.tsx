@@ -3,30 +3,32 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentOrganizationId } from '@/lib/getOrganization'
+import { accessState, trialDaysLeft, employeeLimit, PLAN_EMPLOYEE_LIMITS } from '@/lib/access'
 
 // Display info only. Real prices live in Stripe + lib/stripe.ts.
 const PLANS = [
   { key: 'starter',  name: 'Starter',  price: 49,  description: 'For small teams getting their renewals under control.', popular: false },
-  { key: 'business', name: 'Business', price: 99,  description: 'More employees, workflows, assignments and reporting.', popular: true },
-  { key: 'pro',      name: 'Pro',      price: 199, description: 'Larger teams with advanced automation and integrations.', popular: false },
+  { key: 'business', name: 'Business', price: 99,  description: 'For growing teams with more people to keep compliant.', popular: true },
+  { key: 'pro',      name: 'Pro',      price: 199, description: 'For larger companies that need room to grow.', popular: false },
 ] as const
 
 type Org = {
-  plan: string
-  subscription_status: string
+  plan: string | null
+  subscription_status: string | null
   current_period_end: string | null
-  cancel_at_period_end: boolean
+  cancel_at_period_end: boolean | null
+  trial_ends_at: string | null
 }
 type Message = { type: 'success' | 'error' | 'info'; text: string }
 
 const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   active:   { label: 'Active',        color: 'var(--signal-green)', bg: 'var(--signal-green-bg)' },
-  trialing: { label: 'Trial',         color: 'var(--signal-green)', bg: 'var(--signal-green-bg)' },
+  trialing: { label: 'Active',        color: 'var(--signal-green)', bg: 'var(--signal-green-bg)' },
   past_due: { label: 'Payment issue', color: 'var(--signal-amber)', bg: 'var(--signal-amber-bg)' },
-  canceled: { label: 'Canceled',      color: 'var(--signal-red)',   bg: 'var(--signal-red-bg)' },
 }
 const ENDING_STATUS = { label: 'Ending', color: 'var(--signal-amber)', bg: 'var(--signal-amber-bg)' }
-const FREE_STATUS = { label: 'Free', color: 'var(--ink-soft)', bg: 'var(--paper)' }
+const TRIAL_STATUS = { label: 'Free trial', color: 'var(--signal-green)', bg: 'var(--signal-green-bg)' }
+const EXPIRED_STATUS = { label: 'Trial ended', color: 'var(--signal-red)', bg: 'var(--signal-red-bg)' }
 
 const BANNER: Record<Message['type'], { color: string; bg: string }> = {
   success: { color: 'var(--signal-green)', bg: 'var(--signal-green-bg)' },
@@ -40,6 +42,10 @@ const card: React.CSSProperties = {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function limitText(limit: number | null) {
+  return limit === null ? 'Unlimited employees' : `Up to ${limit} active employees`
 }
 
 // POST to one of our billing API routes with the user's login token
@@ -58,6 +64,7 @@ async function authedPost(url: string, body: object = {}) {
 
 export default function BillingPage() {
   const [org, setOrg] = useState<Org | null>(null)
+  const [activeEmployees, setActiveEmployees] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [message, setMessage] = useState<Message | null>(null)
@@ -67,10 +74,17 @@ export default function BillingPage() {
     if (orgId) {
       const { data } = await supabase
         .from('organizations')
-        .select('plan, subscription_status, current_period_end, cancel_at_period_end')
+        .select('plan, subscription_status, current_period_end, cancel_at_period_end, trial_ends_at')
         .eq('id', orgId)
         .single()
       setOrg(data)
+
+      const { count } = await supabase
+        .from('employees')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', orgId)
+        .or('active.is.null,active.eq.true')
+      setActiveEmployees(count ?? 0)
     }
     setLoading(false)
   }
@@ -107,16 +121,29 @@ export default function BillingPage() {
     }
   }
 
-  const isSubscribed = !!org && ['active', 'trialing', 'past_due'].includes(org.subscription_status)
+  const access = accessState(org)
+  const isSubscribed = access === 'paid'
   const isEnding = isSubscribed && !!org?.cancel_at_period_end
-  const status = !isSubscribed ? FREE_STATUS : isEnding ? ENDING_STATUS : (STATUS[org!.subscription_status] ?? FREE_STATUS)
-  const currentPlanName = isSubscribed ? (PLANS.find(p => p.key === org!.plan)?.name ?? 'Free') : 'Free'
+  const daysLeft = trialDaysLeft(org)
+  const limit = employeeLimit(org)
 
-  let summary = 'Choose a plan below to unlock RenewalPilot for your team.'
+  const status = isSubscribed
+    ? isEnding ? ENDING_STATUS : (STATUS[org!.subscription_status || ''] ?? STATUS.active)
+    : access === 'trial' ? TRIAL_STATUS : EXPIRED_STATUS
+
+  const currentPlanName = isSubscribed
+    ? (PLANS.find(p => p.key === org!.plan)?.name ?? 'Paid plan')
+    : access === 'trial' ? 'Free trial' : 'No plan'
+
+  let summary = ''
   if (isSubscribed && org?.current_period_end) {
     summary = isEnding
       ? `Cancels on ${formatDate(org.current_period_end)}. You’ll keep full access until then.`
       : `Renews on ${formatDate(org.current_period_end)}`
+  } else if (access === 'trial') {
+    summary = `${daysLeft} day${daysLeft === 1 ? '' : 's'} left${org?.trial_ends_at ? ` (ends ${formatDate(org.trial_ends_at)})` : ''}. Everything is unlocked. Choosing a plan starts billing right away.`
+  } else {
+    summary = 'Your free trial has ended. Your data is safe, but adding things and reminder emails are paused until you choose a plan.'
   }
 
   return (
@@ -151,9 +178,18 @@ export default function BillingPage() {
                   {status.label}
                 </span>
               </div>
-              <p style={{ margin: '0.4rem 0 0', color: isEnding ? 'var(--signal-amber)' : 'var(--ink-soft)', fontSize: '0.88rem' }}>
+              <p style={{
+                margin: '0.4rem 0 0', fontSize: '0.88rem',
+                color: access === 'expired' ? 'var(--signal-red)' : isEnding ? 'var(--signal-amber)' : 'var(--ink-soft)',
+              }}>
                 {summary}
               </p>
+              {activeEmployees !== null && (
+                <p style={{ margin: '0.5rem 0 0', fontSize: '0.88rem', color: 'var(--ink-soft)' }}>
+                  Active employees: <strong style={{ color: 'var(--ink)' }}>{activeEmployees}</strong>
+                  {isSubscribed && ` of ${limit === null ? 'unlimited' : limit}`}
+                </p>
+              )}
               {org?.subscription_status === 'past_due' && (
                 <p style={{ margin: '0.5rem 0 0', color: 'var(--signal-amber)', fontSize: '0.85rem', fontWeight: 500 }}>
                   Your last payment didn’t go through. Update your card in Manage billing.
@@ -181,6 +217,8 @@ export default function BillingPage() {
       {/* Plan cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
         {PLANS.map(p => {
+          const planLimit = PLAN_EMPLOYEE_LIMITS[p.key] ?? null
+          const tooSmall = planLimit !== null && activeEmployees !== null && activeEmployees > planLimit
           const isCurrent = isSubscribed && org?.plan === p.key
           const label = busy === p.key ? 'Redirecting…'
             : isCurrent ? 'Current plan'
@@ -211,9 +249,17 @@ export default function BillingPage() {
                 <span className="mono" style={{ fontSize: '2.25rem', fontWeight: 600, letterSpacing: '-0.02em' }}>${p.price}</span>
                 <span style={{ color: 'var(--ink-soft)', fontSize: '0.9rem' }}>/ month</span>
               </p>
-              <p style={{ color: 'var(--ink-soft)', fontSize: '0.9rem', lineHeight: 1.5, margin: '0.85rem 0 1.5rem', flex: 1 }}>
+              <p style={{ margin: '0.85rem 0 0', fontWeight: 600, fontSize: '0.95rem' }}>
+                {limitText(planLimit)}
+              </p>
+              <p style={{ color: 'var(--ink-soft)', fontSize: '0.9rem', lineHeight: 1.5, margin: '0.4rem 0 1.25rem', flex: 1 }}>
                 {p.description}
               </p>
+              {tooSmall && !isCurrent && (
+                <p style={{ margin: '0 0 0.85rem', fontSize: '0.8rem', color: 'var(--signal-amber)' }}>
+                  You have {activeEmployees} active employees. You won’t be able to add more on this plan.
+                </p>
+              )}
               <button
                 onClick={() => (isSubscribed ? openPortal() : subscribe(p.key))}
                 disabled={!!busy || isCurrent}
@@ -234,7 +280,8 @@ export default function BillingPage() {
       </div>
 
       <p style={{ textAlign: 'center', color: 'var(--ink-soft)', fontSize: '0.85rem', marginTop: '2rem', lineHeight: 1.6 }}>
-        Every plan includes AI document reading, automatic expiration reminders, and employee &amp; requirement tracking.
+        Every plan includes AI document reading, automatic reminders, overdue alerts, employee upload links,
+        team access and CSV export. Deactivated employees don’t count toward your limit.
         <br />
         Payments are processed securely by Stripe. Cancel anytime.
       </p>

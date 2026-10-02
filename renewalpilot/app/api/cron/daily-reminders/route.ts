@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { buildEmail } from '@/lib/reminderEmail'
+import { hasAccess } from '@/lib/access'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 const DAY_MS = 86_400_000
@@ -35,7 +36,7 @@ function isReminderDay(days: number, threshold: number) {
   return days === threshold || FOLLOW_UP_DAYS.includes(days)
 }
 
-// Runs once a day (Vercel Cron). Test locally with ?dryRun=1 to preview without sending.
+// Runs once a day (Vercel Cron). Test with ?dryRun=1 to preview without sending.
 export async function GET(req: Request) {
   if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -53,6 +54,12 @@ export async function GET(req: Request) {
     .not('expiration_date', 'is', null)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Companies that are paid or still on their free trial (others get no emails)
+  const { data: orgs } = await supabaseAdmin
+    .from('organizations')
+    .select('id, subscription_status, trial_ends_at')
+  const orgsWithAccess = new Set((orgs ?? []).filter(o => hasAccess(o)).map(o => o.id))
 
   // Requirements with an upload waiting for review: don't nag, the employee already sent it
   const { data: pendingDocs } = await supabaseAdmin
@@ -76,6 +83,7 @@ export async function GET(req: Request) {
   }
 
   let statusUpdates = 0
+  let pausedForBilling = 0
   const sent: object[] = []
   const skipped: object[] = []
 
@@ -99,6 +107,13 @@ export async function GET(req: Request) {
     // 2. Is today a reminder day for this requirement?
     if (!isReminderDay(days, threshold)) continue
     if (r.last_reminder_date === today) continue // already sent today
+
+    // Trial ended and no plan → no emails
+    if (!orgsWithAccess.has(r.organization_id)) {
+      pausedForBilling++
+      continue
+    }
+
     if (awaitingReview.has(r.id)) {
       skipped.push({ requirement: r.name, reason: 'Renewal uploaded, waiting for review' })
       continue
@@ -144,5 +159,13 @@ export async function GET(req: Request) {
     await new Promise(res => setTimeout(res, 600)) // stay under Resend's rate limit
   }
 
-  return NextResponse.json({ date: today, dryRun, checked: requirements?.length ?? 0, statusUpdates, sent, skipped })
+  return NextResponse.json({
+    date: today,
+    dryRun,
+    checked: requirements?.length ?? 0,
+    statusUpdates,
+    pausedForBilling,
+    sent,
+    skipped,
+  })
 }

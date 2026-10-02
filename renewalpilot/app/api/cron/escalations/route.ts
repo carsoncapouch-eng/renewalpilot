@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { buildEscalationEmail, EscalationItem } from '@/lib/escalationEmail'
+import { hasAccess } from '@/lib/access'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
 
   const { data: orgs, error: orgError } = await supabaseAdmin
     .from('organizations')
-    .select('id, name, escalation_days')
+    .select('id, name, escalation_days, subscription_status, trial_ends_at')
     .gt('escalation_days', 0)
 
   if (orgError) {
@@ -53,7 +54,9 @@ export async function GET(req: NextRequest) {
   const results: Record<string, unknown>[] = []
 
   for (const org of orgs || []) {
-    // Overdue requirements in this company
+    // Trial ended and no plan → no emails
+    if (!hasAccess(org)) continue
+
     const { data, error } = await supabaseAdmin
       .from('requirements')
       .select('id, name, expiration_date, last_escalation_date, responsible_name, employees(name, active)')
@@ -69,7 +72,6 @@ export async function GET(req: NextRequest) {
     const reqs = (data || []) as unknown as Row[]
     if (reqs.length === 0) continue
 
-    // Skip anything with a document waiting for review
     const { data: pending } = await supabaseAdmin
       .from('documents')
       .select('requirement_id')
@@ -92,7 +94,6 @@ export async function GET(req: NextRequest) {
       if (r.last_escalation_date) {
         const last = toDay(r.last_escalation_date)
         const daysSinceLast = Math.round((today - last) / DAY)
-        // Already alerted for this expiration within the last week
         if (last >= expiration && daysSinceLast < 7) continue
       }
 
@@ -109,7 +110,6 @@ export async function GET(req: NextRequest) {
 
     if (items.length === 0) continue
 
-    // Everyone on the team
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
       .select('user_id')

@@ -9,31 +9,35 @@ if (!process.env.STRIPE_SECRET_KEY) {
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Your plans, in one place. Change names/prices here later if pricing changes.
+// Employee limits are also enforced in the database (see lib/access.ts).
 export const PLANS = {
   starter: {
     name: "Starter",
     price: 49,
+    employees: 10,
     priceId: process.env.STRIPE_PRICE_STARTER!,
-    description: "Small team / limited tracked requirements",
+    description: "For small teams — up to 10 active employees",
   },
   business: {
     name: "Business",
     price: 99,
+    employees: 50,
     priceId: process.env.STRIPE_PRICE_BUSINESS!,
-    description: "More employees, workflows, assignments and reporting",
+    description: "For growing teams — up to 50 active employees",
   },
   pro: {
     name: "Pro",
     price: 199,
+    employees: null,
     priceId: process.env.STRIPE_PRICE_PRO!,
-    description: "Larger teams, advanced automation and integrations",
+    description: "For larger companies — unlimited employees",
   },
 } as const;
 
 export type PlanKey = keyof typeof PLANS;
 
 // Turns a Stripe price ID back into "starter" | "business" | "pro".
-// The webhook uses this later to update the organization's plan.
+// The webhook uses this to update the organization's plan.
 export function planFromPriceId(priceId: string): PlanKey | null {
   const match = Object.entries(PLANS).find(([, p]) => p.priceId === priceId);
   return match ? (match[0] as PlanKey) : null;
