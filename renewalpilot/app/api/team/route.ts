@@ -30,22 +30,28 @@ function appUrl() {
 async function getMembers(orgId: string, myId: string) {
   const { data: profiles, error } = await supabaseAdmin
     .from('profiles')
-    .select('user_id, name')
+    .select('user_id, name, role')
     .eq('organization_id', orgId)
 
   if (error) throw error
 
-  return Promise.all(
-    (profiles || []).map(async (p: { user_id: string; name: string | null }) => {
-      const { data } = await supabaseAdmin.auth.admin.getUserById(p.user_id)
-      return {
-        userId: p.user_id,
-        name: p.name || '',
-        email: (data?.user?.email || '').toLowerCase(),
-        isYou: p.user_id === myId,
+  const members = await Promise.all(
+    (profiles || []).map(
+      async (p: { user_id: string; name: string | null; role: string | null }) => {
+        const { data } = await supabaseAdmin.auth.admin.getUserById(p.user_id)
+        return {
+          userId: p.user_id,
+          name: p.name || '',
+          email: (data?.user?.email || '').toLowerCase(),
+          role: p.role === 'member' ? 'member' : 'owner',
+          isYou: p.user_id === myId,
+        }
       }
-    })
+    )
   )
+
+  // Owners first
+  return members.sort((a, b) => (a.role === b.role ? 0 : a.role === 'owner' ? -1 : 1))
 }
 
 export async function POST(req: NextRequest) {
@@ -60,9 +66,12 @@ export async function POST(req: NextRequest) {
   const action = body.action as string
 
   try {
+    const members = await getMembers(orgId, myId)
+    const me = members.find((m) => m.isYou)
+    const isOwner = me?.role === 'owner'
+
     // ---------- LIST ----------
     if (action === 'list') {
-      const members = await getMembers(orgId, myId)
       const { data: invites } = await supabaseAdmin
         .from('invites')
         .select('id, email, token, created_at')
@@ -70,17 +79,15 @@ export async function POST(req: NextRequest) {
         .is('accepted_at', null)
         .order('created_at', { ascending: true })
 
-      return NextResponse.json({ members, invites: invites || [] })
+      return NextResponse.json({ members, invites: invites || [], isOwner })
     }
 
-    // ---------- INVITE ----------
+    // ---------- INVITE (anyone on the team) ----------
     if (action === 'invite') {
       const email = String(body.email || '').trim().toLowerCase()
       if (!EMAIL_RE.test(email)) {
         return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 })
       }
-
-      const members = await getMembers(orgId, myId)
       if (members.some((m) => m.email === email)) {
         return NextResponse.json({ error: 'That person is already on your team.' }, { status: 400 })
       }
@@ -104,7 +111,6 @@ export async function POST(req: NextRequest) {
         .eq('id', orgId)
         .single()
 
-      const me = members.find((m) => m.isYou)
       const inviterName = me?.name || me?.email || 'A teammate'
       const orgName = org?.name || 'your team'
       const link = `${appUrl()}/join/${invite.token}`
@@ -128,8 +134,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ invite, emailSent })
     }
 
-    // ---------- CANCEL INVITE ----------
+    // ---------- CANCEL INVITE (owner only) ----------
     if (action === 'cancel') {
+      if (!isOwner) {
+        return NextResponse.json({ error: 'Only the owner can cancel invites.' }, { status: 403 })
+      }
       const { error } = await supabaseAdmin
         .from('invites')
         .delete()
@@ -141,14 +150,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    // ---------- REMOVE MEMBER ----------
+    // ---------- REMOVE MEMBER (owner only, can't remove owners) ----------
     if (action === 'remove') {
-      const userId = String(body.userId || '')
-      if (!userId) {
-        return NextResponse.json({ error: 'Missing teammate.' }, { status: 400 })
+      if (!isOwner) {
+        return NextResponse.json({ error: 'Only the owner can remove teammates.' }, { status: 403 })
       }
-      if (userId === myId) {
-        return NextResponse.json({ error: "You can't remove yourself." }, { status: 400 })
+      const userId = String(body.userId || '')
+      const target = members.find((m) => m.userId === userId)
+      if (!target) {
+        return NextResponse.json({ error: 'Teammate not found.' }, { status: 404 })
+      }
+      if (target.isYou || target.role === 'owner') {
+        return NextResponse.json({ error: "The owner can't be removed." }, { status: 400 })
       }
 
       const { error } = await supabaseAdmin

@@ -1,0 +1,464 @@
+/* ===== RenewalPilot shared styles (Header, Team, Join) ===== */
+
+/* ---------- Header ---------- */
+.rp-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid #e5e7eb;
+}
+.rp-header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 16px;
+}
+.rp-logo {
+  font-weight: 700;
+  font-size: 18px;
+  color: #2563eb;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.rp-nav {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  overflow-x: auto;
+}
+.rp-nav a {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #4b5563;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.rp-nav a:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+.rp-nav a.active {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.rp-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+.rp-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2937;
+  cursor: pointer;
+}
+.rp-menu-btn:hover {
+  background: #f9fafb;
+}
+.rp-menu-btn span {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-chevron {
+  color: #6b7280;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.rp-chevron.open {
+  transform: rotate(180deg);
+}
+.rp-dropdown {
+  position: absolute;
+  right: 0;
+  margin-top: 8px;
+  width: 220px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+  padding: 4px 0;
+  overflow: hidden;
+}
+.rp-dropdown-head {
+  padding: 8px 16px 10px;
+  border-bottom: 1px solid #f3f4f6;
+  margin-bottom: 4px;
+}
+.rp-dropdown-head small {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+}
+.rp-dropdown-head strong {
+  display: block;
+  font-size: 14px;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-dropdown button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 16px;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+}
+.rp-dropdown button:hover {
+  background: #f9fafb;
+}
+.rp-dropdown hr {
+  border: 0;
+  border-top: 1px solid #f3f4f6;
+  margin: 4px 0;
+}
+.rp-dropdown button.danger {
+  color: #dc2626;
+}
+.rp-dropdown button.danger:hover {
+  background: #fef2f2;
+}
+
+/* ---------- Pages ---------- */
+.rp-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 40px 16px;
+}
+.rp-back {
+  font-size: 14px;
+  color: #6b7280;
+  text-decoration: none;
+}
+.rp-back:hover {
+  color: #111827;
+}
+.rp-title {
+  font-size: 30px;
+  font-weight: 700;
+  color: #111827;
+  margin: 8px 0 6px;
+}
+.rp-sub {
+  color: #4b5563;
+  margin: 0 0 28px;
+  line-height: 1.5;
+}
+.rp-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  margin-bottom: 20px;
+}
+.rp-card-pad {
+  padding: 24px;
+}
+.rp-card-head {
+  padding: 16px 24px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.rp-h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+.rp-count {
+  color: #9ca3af;
+  font-weight: 500;
+}
+.rp-muted {
+  color: #6b7280;
+  font-size: 14px;
+  margin: 4px 0 0;
+  line-height: 1.5;
+}
+.rp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rp-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 24px;
+  border-top: 1px solid #f3f4f6;
+  flex-wrap: wrap;
+}
+.rp-row:first-child {
+  border-top: 0;
+}
+.rp-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.rp-grow {
+  flex: 1;
+  min-width: 0;
+}
+.rp-name {
+  font-weight: 500;
+  color: #111827;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #f3f4f6;
+  color: #4b5563;
+  vertical-align: middle;
+}
+.rp-badge.blue {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.rp-badge.amber {
+  background: #fef3c7;
+  color: #92400e;
+  margin-left: 0;
+}
+
+/* ---------- Forms & buttons ---------- */
+.rp-form {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.rp-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 15px;
+  color: #111827;
+  background: #fff;
+  outline: none;
+  box-sizing: border-box;
+}
+.rp-form .rp-input {
+  flex: 1;
+  width: auto;
+  min-width: 220px;
+}
+.rp-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px #dbeafe;
+}
+.rp-input[readonly] {
+  background: #f9fafb;
+  color: #6b7280;
+}
+.rp-btn {
+  display: inline-block;
+  padding: 10px 20px;
+  border: 0;
+  border-radius: 12px;
+  background: #2563eb;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+  box-sizing: border-box;
+}
+.rp-btn:hover {
+  background: #1d4ed8;
+}
+.rp-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.rp-btn.full {
+  width: 100%;
+  padding: 12px 20px;
+}
+.rp-btn-outline {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #374151;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.rp-btn-outline:hover {
+  background: #f9fafb;
+}
+.rp-btn-danger {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: #dc2626;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.rp-btn-danger:hover {
+  background: #fef2f2;
+}
+.rp-alert {
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  margin-bottom: 20px;
+  border: 1px solid;
+}
+.rp-alert.ok {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+.rp-alert.error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+/* ---------- Join page ---------- */
+.rp-center {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 16px;
+  box-sizing: border-box;
+}
+.rp-auth {
+  width: 100%;
+  max-width: 420px;
+}
+.rp-auth-logo {
+  display: block;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: #2563eb;
+  text-decoration: none;
+  margin-bottom: 24px;
+}
+.rp-auth-card {
+  padding: 32px;
+}
+.rp-text-center {
+  text-align: center;
+}
+.rp-auth-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+.rp-auth-text {
+  color: #4b5563;
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+.rp-field {
+  margin-bottom: 16px;
+}
+.rp-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 6px;
+}
+.rp-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #9ca3af;
+  font-size: 14px;
+  margin: 24px 0;
+}
+.rp-divider::before,
+.rp-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+.rp-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 24px;
+  padding: 12px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: #fff;
+  font: inherit;
+  font-weight: 600;
+  font-size: 15px;
+  color: #1f2937;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.rp-google:hover {
+  background: #f9fafb;
+}
+.rp-link {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+}
+.rp-link:hover {
+  text-decoration: underline;
+}
+.rp-error {
+  margin: 16px 0 0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 14px;
+}

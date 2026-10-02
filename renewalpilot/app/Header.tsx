@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentOrganizationId } from '@/lib/getOrganization'
+import '@/app/rp.css'
 
 const HIDDEN_EXACT = ['/', '/login', '/signup', '/forgot-password', '/reset-password']
 const HIDDEN_PREFIX = ['/upload', '/join']
@@ -67,6 +68,11 @@ export default function Header() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
+  function go(href: string) {
+    setOpen(false)
+    router.push(href)
+  }
+
   async function logOut() {
     setOpen(false)
     await supabase.auth.signOut()
@@ -76,39 +82,30 @@ export default function Header() {
   if (hidden || !loggedIn) return null
 
   return (
-    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4">
-        <Link href="/dashboard" className="shrink-0 text-lg font-bold text-blue-600">
+    <header className="rp-header">
+      <div className="rp-header-inner">
+        <Link href="/dashboard" className="rp-logo">
           RenewalPilot
         </Link>
 
-        <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
+        <nav className="rp-nav">
           {NAV.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition ${
-                  active
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                }`}
-              >
+              <Link key={item.href} href={item.href} className={active ? 'active' : ''}>
                 {item.label}
               </Link>
             )
           })}
         </nav>
 
-        <div className="relative shrink-0" ref={menuRef}>
-          <button
-            onClick={() => setOpen((o) => !o)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
-          >
-            <span className="max-w-[160px] truncate">{orgName || 'My organization'}</span>
+        <div className="rp-menu" ref={menuRef}>
+          <button className="rp-menu-btn" onClick={() => setOpen((o) => !o)}>
+            <span>{orgName || 'My organization'}</span>
             <svg
-              className={`h-4 w-4 text-gray-500 transition ${open ? 'rotate-180' : ''}`}
+              className={`rp-chevron ${open ? 'open' : ''}`}
+              width="16"
+              height="16"
               viewBox="0 0 20 20"
               fill="currentColor"
               aria-hidden="true"
@@ -122,45 +119,16 @@ export default function Header() {
           </button>
 
           {open && (
-            <div className="absolute right-0 mt-2 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-              <div className="border-b border-gray-100 px-4 py-2">
-                <p className="text-xs text-gray-500">Organization</p>
-                <p className="truncate text-sm font-semibold text-gray-900">
-                  {orgName || 'My organization'}
-                </p>
+            <div className="rp-dropdown">
+              <div className="rp-dropdown-head">
+                <small>Organization</small>
+                <strong>{orgName || 'My organization'}</strong>
               </div>
-              <button
-                onClick={() => {
-                  setOpen(false)
-                  router.push('/settings')
-                }}
-                className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-              >
-                Settings
-              </button>
-              <button
-                onClick={() => {
-                  setOpen(false)
-                  router.push('/team')
-                }}
-                className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-              >
-                Team
-              </button>
-              <button
-                onClick={() => {
-                  setOpen(false)
-                  router.push('/billing')
-                }}
-                className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-              >
-                Billing
-              </button>
-              <div className="my-1 border-t border-gray-100" />
-              <button
-                onClick={logOut}
-                className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-              >
+              <button onClick={() => go('/settings')}>Settings</button>
+              <button onClick={() => go('/team')}>Team</button>
+              <button onClick={() => go('/billing')}>Billing</button>
+              <hr />
+              <button className="danger" onClick={logOut}>
                 Log out
               </button>
             </div>
