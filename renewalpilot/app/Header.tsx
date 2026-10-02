@@ -1,180 +1,171 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+
 import Link from 'next/link'
-import { useRouter, usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentOrganizationId } from '@/lib/getOrganization'
 
-const links = [
+const HIDDEN_EXACT = ['/', '/login', '/signup', '/forgot-password', '/reset-password']
+const HIDDEN_PREFIX = ['/upload', '/join']
+
+const NAV = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/attention', label: 'Attention' },
-  { href: '/employees', label: 'Employees' },
   { href: '/requirements', label: 'Requirements' },
+  { href: '/employees', label: 'Employees' },
   { href: '/documents', label: 'Documents' },
 ]
 
-const PLAN_NAMES: Record<string, string> = {
-  free: 'Free plan',
-  starter: 'Starter plan',
-  business: 'Business plan',
-  pro: 'Pro plan',
-}
-
-const menuItem: React.CSSProperties = {
-  display: 'block', width: '100%', textAlign: 'left', padding: '0.5rem 0.6rem',
-  margin: '0 -0.6rem', borderRadius: 6, background: 'none', border: 'none',
-  cursor: 'pointer', color: 'var(--ink)', fontSize: '0.88rem', fontFamily: 'inherit',
-}
-
 export default function Header() {
+  const pathname = usePathname() || '/'
   const router = useRouter()
-  const pathname = usePathname()
-  const [email, setEmail] = useState('')
   const [orgName, setOrgName] = useState('')
-  const [plan, setPlan] = useState('free')
+  const [loggedIn, setLoggedIn] = useState(false)
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      setEmail(user.email || '')
+  const hidden =
+    HIDDEN_EXACT.includes(pathname) || HIDDEN_PREFIX.some((p) => pathname.startsWith(p))
 
-      const orgId = await getCurrentOrganizationId()
-      if (!orgId) return
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('name, plan')
-        .eq('id', orgId)
-        .single()
-      setOrgName(org?.name || 'My Organization')
-      setPlan(org?.plan || 'free')
+  useEffect(() => {
+    setOpen(false)
+    if (hidden) return
+    let cancelled = false
+
+    ;(async () => {
+      const { data } = await supabase.auth.getSession()
+      if (!data.session) {
+        if (!cancelled) setLoggedIn(false)
+        return
+      }
+      if (!cancelled) setLoggedIn(true)
+      try {
+        const orgId = await getCurrentOrganizationId()
+        if (!orgId) return
+        const { data: org } = await supabase
+          .from('organizations')
+          .select('name')
+          .eq('id', orgId)
+          .single()
+        if (!cancelled) setOrgName(org?.name || 'My organization')
+      } catch {
+        if (!cancelled) setOrgName('My organization')
+      }
+    })()
+
+    return () => {
+      cancelled = true
     }
-    load()
-  }, [pathname])
+  }, [pathname, hidden])
 
-  // Close the dropdown when clicking anywhere outside it
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
+    function onClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false)
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
-  function go(path: string) {
+  async function logOut() {
     setOpen(false)
-    router.push(path)
-  }
-
-  async function handleLogout() {
     await supabase.auth.signOut()
     router.push('/login')
   }
 
-      if (pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password' || pathname === '/reset-password' || pathname?.startsWith('/upload')) {
-    return null
-  }
+  if (hidden || !loggedIn) return null
 
   return (
-    <header style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '0.85rem 1.75rem', borderBottom: '1px solid var(--line)', background: 'var(--surface)',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '2.25rem' }}>
-        <span style={{ fontWeight: 700, color: 'var(--ink)', letterSpacing: '-0.01em' }}>RenewalPilot</span>
-        <nav style={{ display: 'flex', gap: '1.5rem' }}>
-          {links.map(link => {
-            const active = pathname?.startsWith(link.href)
+    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/90 backdrop-blur">
+      <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4">
+        <Link href="/dashboard" className="shrink-0 text-lg font-bold text-blue-600">
+          RenewalPilot
+        </Link>
+
+        <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
+          {NAV.map((item) => {
+            const active = pathname === item.href || pathname.startsWith(item.href + '/')
             return (
               <Link
-                key={link.href}
-                href={link.href}
-                style={{
-                  fontSize: '0.88rem',
-                  color: active ? 'var(--ink)' : 'var(--ink-soft)',
-                  fontWeight: active ? 600 : 400,
-                  textDecoration: 'none',
-                  borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
-                  paddingBottom: 4,
-                }}
+                key={item.href}
+                href={item.href}
+                className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  active
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                }`}
               >
-                {link.label}
+                {item.label}
               </Link>
             )
           })}
         </nav>
-      </div>
 
-      <div ref={menuRef} style={{ position: 'relative' }}>
-        <button
-          onClick={() => setOpen(!open)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '0.35rem 0.75rem 0.35rem 0.35rem', borderRadius: 20,
-            border: '1px solid var(--line)', background: 'var(--surface)', cursor: 'pointer',
-          }}
-        >
-          <span style={{
-            width: 26, height: 26, borderRadius: '50%', background: 'var(--accent)', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.78rem', fontWeight: 600,
-          }}>
-            {orgName.charAt(0).toUpperCase() || '?'}
-          </span>
-          <span style={{ fontSize: '0.88rem', color: 'var(--ink)' }}>{orgName}</span>
-          <span style={{ fontSize: '0.65rem', color: 'var(--ink-soft)' }}>▾</span>
-        </button>
-
-        {open && (
-          <div style={{
-            position: 'absolute', right: 0, top: '110%', width: 240,
-            background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10,
-            boxShadow: '0 8px 24px rgba(28,37,48,0.12)', padding: '0.85rem', zIndex: 50,
-          }}>
-            <p style={{ fontSize: '0.72rem', color: 'var(--ink-soft)', margin: '0 0 4px 0' }}>Signed in as</p>
-            <p style={{ fontWeight: 600, margin: '0 0 0.5rem 0', fontSize: '0.88rem', wordBreak: 'break-all' }}>{email}</p>
-            <span style={{
-              display: 'inline-block', fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999,
-              background: plan === 'free' ? 'var(--paper)' : 'var(--signal-green-bg)',
-              color: plan === 'free' ? 'var(--ink-soft)' : 'var(--signal-green)',
-              border: '1px solid var(--line)',
-            }}>
-              {PLAN_NAMES[plan] ?? 'Free plan'}
-            </span>
-
-            <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '0.75rem 0 0.4rem' }} />
-
-            <button
-              onClick={() => go('/settings')}
-              style={menuItem}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--paper)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+        <div className="relative shrink-0" ref={menuRef}>
+          <button
+            onClick={() => setOpen((o) => !o)}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+          >
+            <span className="max-w-[160px] truncate">{orgName || 'My organization'}</span>
+            <svg
+              className={`h-4 w-4 text-gray-500 transition ${open ? 'rotate-180' : ''}`}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
             >
-              Settings
-            </button>
+              <path
+                fillRule="evenodd"
+                d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
 
-            <button
-              onClick={() => go('/billing')}
-              style={menuItem}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--paper)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-            >
-              Billing
-            </button>
-
-            <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '0.4rem 0' }} />
-
-            <button
-              onClick={handleLogout}
-              style={{ ...menuItem, color: 'var(--signal-red)' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--signal-red-bg)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-            >
-              Log Out
-            </button>
-          </div>
-        )}
+          {open && (
+            <div className="absolute right-0 mt-2 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+              <div className="border-b border-gray-100 px-4 py-2">
+                <p className="text-xs text-gray-500">Organization</p>
+                <p className="truncate text-sm font-semibold text-gray-900">
+                  {orgName || 'My organization'}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  router.push('/settings')
+                }}
+                className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Settings
+              </button>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  router.push('/team')
+                }}
+                className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Team
+              </button>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  router.push('/billing')
+                }}
+                className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Billing
+              </button>
+              <div className="my-1 border-t border-gray-100" />
+              <button
+                onClick={logOut}
+                className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+              >
+                Log out
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   )
