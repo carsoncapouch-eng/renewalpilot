@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentOrganizationId } from '@/lib/getOrganization'
 
@@ -241,7 +242,9 @@ export default function RequirementsPage() {
                       opacity: deletingId === req.id ? 0.4 : req.status === 'paused' ? 0.6 : 1,
                     }}
                   >
-                    <td style={{ ...td, fontWeight: 500 }}>{req.name}</td>
+                    <td style={{ ...td, fontWeight: 500 }}>
+                      <Link href={`/requirements/${req.id}`} style={{ color: 'var(--ink)' }}>{req.name}</Link>
+                    </td>
                     <td style={{ ...td, color: 'var(--ink-soft)' }}>
                       {!req.employee_id && (
                         <span style={{ fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--paper)', border: '1px solid var(--line)', color: 'var(--accent)', marginRight: 6 }}>

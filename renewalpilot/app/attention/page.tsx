@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentOrganizationId } from '@/lib/getOrganization'
@@ -224,7 +225,7 @@ export default function AttentionPage() {
       >
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
-            {req.name}
+            <Link href={`/requirements/${req.id}`} style={{ color: 'var(--ink)' }}>{req.name}</Link>
             <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}> · {personFor(req)}</span>
             {uploaded && (
               <span style={{ marginLeft: 8, fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--signal-green-bg)', color: 'var(--signal-green)' }}>
@@ -310,7 +311,9 @@ export default function AttentionPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.8rem' }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
-                      {p.requirements?.name ?? 'Document'}
+                      {p.requirement_id ? (
+                        <Link href={`/requirements/${p.requirement_id}`} style={{ color: 'var(--ink)' }}>{p.requirements?.name ?? 'Document'}</Link>
+                      ) : (p.requirements?.name ?? 'Document')}
                       <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}> · {personFor(p.requirements)}</span>
                     </div>
                     <div style={{ color: 'var(--ink-soft)', fontSize: '0.84rem', marginTop: 2 }}>
