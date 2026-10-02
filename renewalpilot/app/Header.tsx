@@ -127,6 +127,7 @@ export default function Header() {
               <button onClick={() => go('/settings')}>Settings</button>
               <button onClick={() => go('/team')}>Team</button>
               <button onClick={() => go('/billing')}>Billing</button>
+              <button onClick={() => go('/settings/data')}>Export &amp; delete</button>
               <hr />
               <button className="danger" onClick={logOut}>
                 Log out
