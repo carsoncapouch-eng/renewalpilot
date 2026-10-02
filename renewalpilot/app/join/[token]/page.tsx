@@ -58,7 +58,7 @@ export default function JoinPage() {
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/dashboard`,
-        data: { name, company_name: info.orgName },
+        data: { name },
       },
     })
     setBusy(false)
