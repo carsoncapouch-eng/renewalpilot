@@ -15,6 +15,14 @@ type Member = {
 }
 type Invite = { id: string; email: string; token: string; created_at: string }
 
+const ESCALATION_CHOICES = [
+  { value: 1, label: '1 day overdue' },
+  { value: 3, label: '3 days overdue (recommended)' },
+  { value: 7, label: '7 days overdue' },
+  { value: 14, label: '14 days overdue' },
+  { value: 0, label: 'Off — never email the team' },
+]
+
 async function teamCall(body: Record<string, unknown>) {
   const { data } = await supabase.auth.getSession()
   const res = await fetch('/api/team', {
@@ -42,6 +50,8 @@ export default function TeamPage() {
   const [members, setMembers] = useState<Member[]>([])
   const [invites, setInvites] = useState<Invite[]>([])
   const [isOwner, setIsOwner] = useState(false)
+  const [escalationDays, setEscalationDays] = useState(3)
+  const [savingEsc, setSavingEsc] = useState(false)
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
@@ -53,6 +63,7 @@ export default function TeamPage() {
       setMembers(data.members || [])
       setInvites(data.invites || [])
       setIsOwner(!!data.isOwner)
+      setEscalationDays(typeof data.escalationDays === 'number' ? data.escalationDays : 3)
     } catch (e) {
       setMessage({ type: 'error', text: (e as Error).message })
     } finally {
@@ -86,6 +97,26 @@ export default function TeamPage() {
       setMessage({ type: 'error', text: (err as Error).message })
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function changeEscalation(days: number) {
+    setSavingEsc(true)
+    setMessage(null)
+    try {
+      await teamCall({ action: 'setEscalation', days })
+      setEscalationDays(days)
+      setMessage({
+        type: 'ok',
+        text:
+          days === 0
+            ? 'Overdue alerts are off.'
+            : `Saved. The team will be emailed when something is ${days} day${days === 1 ? '' : 's'} overdue.`,
+      })
+    } catch (err) {
+      setMessage({ type: 'error', text: (err as Error).message })
+    } finally {
+      setSavingEsc(false)
     }
   }
 
@@ -220,6 +251,32 @@ export default function TeamPage() {
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {/* Overdue alerts */}
+      {!loading && (
+        <section className="rp-card rp-card-pad">
+          <h2 className="rp-h2">Overdue alerts</h2>
+          <p className="rp-muted">
+            If a renewal stays overdue, everyone on this team gets an email listing it. The alert
+            repeats once a week until it&apos;s renewed.
+          </p>
+          <div className="rp-form">
+            <select
+              className="rp-input"
+              value={escalationDays}
+              disabled={!isOwner || savingEsc}
+              onChange={(e) => changeEscalation(Number(e.target.value))}
+            >
+              {ESCALATION_CHOICES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.value === 0 ? c.label : `Email the team when ${c.label}`}
+                </option>
+              ))}
+            </select>
+          </div>
+          {!isOwner && <p className="rp-muted">Only the owner can change this.</p>}
         </section>
       )}
     </main>
