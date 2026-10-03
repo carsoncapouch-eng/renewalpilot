@@ -126,6 +126,8 @@ export default function BillingPage() {
   const isEnding = isSubscribed && !!org?.cancel_at_period_end
   const daysLeft = trialDaysLeft(org)
   const limit = employeeLimit(org)
+  const overBy = isSubscribed && limit !== null && activeEmployees !== null ? activeEmployees - limit : 0
+  const atLimit = isSubscribed && limit !== null && activeEmployees !== null && activeEmployees === limit
 
   const status = isSubscribed
     ? isEnding ? ENDING_STATUS : (STATUS[org!.subscription_status || ''] ?? STATUS.active)
@@ -162,6 +164,19 @@ export default function BillingPage() {
         </div>
       )}
 
+      {/* Over the limit warning */}
+      {!loading && overBy > 0 && (
+        <div style={{
+          padding: '0.85rem 1rem', borderRadius: 10, marginBottom: '1.5rem', fontSize: '0.9rem', lineHeight: 1.5,
+          border: '1px solid var(--line)', color: 'var(--signal-amber)', background: 'var(--signal-amber-bg)',
+        }}>
+          <strong>You’re over your plan’s limit.</strong> You have {activeEmployees} active employees and your{' '}
+          {currentPlanName} plan allows {limit}. Everyone you already have keeps working, but you can’t add or
+          reactivate employees until you deactivate {overBy} {overBy === 1 ? 'person' : 'people'} on the Employees
+          page or switch to a bigger plan.
+        </div>
+      )}
+
       {/* Current plan summary */}
       <section style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '2.5rem' }}>
         <div>
@@ -185,9 +200,12 @@ export default function BillingPage() {
                 {summary}
               </p>
               {activeEmployees !== null && (
-                <p style={{ margin: '0.5rem 0 0', fontSize: '0.88rem', color: 'var(--ink-soft)' }}>
-                  Active employees: <strong style={{ color: 'var(--ink)' }}>{activeEmployees}</strong>
+                <p style={{ margin: '0.5rem 0 0', fontSize: '0.88rem', color: overBy > 0 ? 'var(--signal-amber)' : 'var(--ink-soft)' }}>
+                  Active employees:{' '}
+                  <strong style={{ color: overBy > 0 ? 'var(--signal-amber)' : 'var(--ink)' }}>{activeEmployees}</strong>
                   {isSubscribed && ` of ${limit === null ? 'unlimited' : limit}`}
+                  {atLimit && ' (limit reached)'}
+                  {overBy > 0 && ` (${overBy} over)`}
                 </p>
               )}
               {org?.subscription_status === 'past_due' && (
@@ -255,9 +273,9 @@ export default function BillingPage() {
               <p style={{ color: 'var(--ink-soft)', fontSize: '0.9rem', lineHeight: 1.5, margin: '0.4rem 0 1.25rem', flex: 1 }}>
                 {p.description}
               </p>
-              {tooSmall && !isCurrent && (
+              {tooSmall && (
                 <p style={{ margin: '0 0 0.85rem', fontSize: '0.8rem', color: 'var(--signal-amber)' }}>
-                  You have {activeEmployees} active employees. You won’t be able to add more on this plan.
+                  You have {activeEmployees} active employees, more than this plan allows.
                 </p>
               )}
               <button
