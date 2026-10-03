@@ -1,5 +1,7 @@
 {
   "crons": [
-    { "path": "/api/cron/daily-reminders", "schedule": "0 14 * * *" }
+    { "path": "/api/cron/daily-reminders", "schedule": "0 14 * * *" },
+    { "path": "/api/cron/escalations", "schedule": "15 14 * * *" },
+    { "path": "/api/cron/trial-emails", "schedule": "30 14 * * *" }
   ]
 }
