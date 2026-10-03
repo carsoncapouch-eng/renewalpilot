@@ -78,7 +78,7 @@ export default function SignupPage() {
       ) : (
         <form onSubmit={handleSignup} style={card}>
           <h1 style={{ fontSize: '1.5rem', margin: '0 0 0.35rem' }}>Create your account</h1>
-          <p style={{ color: 'var(--ink-soft)', margin: '0 0 1.5rem', fontSize: '0.92rem' }}>Start tracking renewals in minutes.</p>
+          <p style={{ color: 'var(--ink-soft)', margin: '0 0 1.5rem', fontSize: '0.92rem' }}>Start your 14-day free trial. No card needed.</p>
 
           <button
             type="button"
@@ -116,6 +116,13 @@ export default function SignupPage() {
           >
             {busy ? 'Creating account…' : 'Create account'}
           </button>
+
+          <p style={{ color: 'var(--ink-soft)', fontSize: '0.8rem', lineHeight: 1.5, margin: '1rem 0 0', textAlign: 'center' }}>
+            By continuing, you agree to our{' '}
+            <Link href="/terms" target="_blank" style={{ color: 'var(--accent)' }}>Terms of Service</Link>
+            {' '}and{' '}
+            <Link href="/privacy" target="_blank" style={{ color: 'var(--accent)' }}>Privacy Policy</Link>.
+          </p>
         </form>
       )}
 

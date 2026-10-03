@@ -12,30 +12,18 @@ export const supabaseAdmin = createClient(
 // and their organization id (or null if the token is missing/invalid).
 export async function getOrgFromRequest(req: Request) {
   const token = req.headers.get('authorization')?.replace('Bearer ', '')
-  if (!token) {
-    console.log('[billing] No token sent from browser')
-    return null
-  }
-
-  console.log('[billing] Service key present:', !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-    '| starts with:', process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(0, 8))
+  if (!token) return null
 
   const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-  if (error || !user) {
-    console.log('[billing] getUser failed:', error?.message)
-    return null
-  }
+  if (error || !user) return null
 
-  const { data: profile, error: profileError } = await supabaseAdmin
+  const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('organization_id')
     .eq('user_id', user.id)
     .single()
 
-  if (!profile?.organization_id) {
-    console.log('[billing] Profile lookup failed:', profileError?.message)
-    return null
-  }
-  
+  if (!profile?.organization_id) return null
+
   return { user, organizationId: profile.organization_id as string }
 }
