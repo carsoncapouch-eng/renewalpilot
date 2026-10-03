@@ -10,10 +10,15 @@ export async function POST(req: Request) {
   }
   const { user, organizationId } = auth
 
-  // 2. Which plan did they pick?
-  const { plan } = (await req.json()) as { plan: PlanKey }
+  // 2. Which plan and billing period did they pick?
+  const { plan, interval } = (await req.json()) as { plan: PlanKey; interval?: 'month' | 'year' }
   if (!plan || !(plan in PLANS)) {
     return NextResponse.json({ error: 'Invalid plan' }, { status: 400 })
+  }
+
+  const priceId = interval === 'year' ? PLANS[plan].yearlyPriceId : PLANS[plan].priceId
+  if (!priceId) {
+    return NextResponse.json({ error: 'Yearly billing isn’t available for this plan yet.' }, { status: 400 })
   }
 
   // 3. Load their organization
@@ -59,7 +64,7 @@ export async function POST(req: Request) {
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription',
     customer: customerId,
-    line_items: [{ price: PLANS[plan].priceId, quantity: 1 }],
+    line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${origin}/billing?success=1`,
     cancel_url: `${origin}/billing?canceled=1`,
     client_reference_id: organizationId,

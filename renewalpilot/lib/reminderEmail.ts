@@ -4,6 +4,14 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }
 
+function siteOrigin(link: string) {
+  try {
+    return new URL(link).origin
+  } catch {
+    return 'https://renewalpilot-eta.vercel.app'
+  }
+}
+
 export function buildEmail(opts: { name: string; person: string; expiration: string; days: number; link: string }) {
   const { days } = opts
   const name = escapeHtml(opts.name)
@@ -11,6 +19,7 @@ export function buildEmail(opts: { name: string; person: string; expiration: str
   const dateLabel = new Date(opts.expiration.slice(0, 10) + 'T00:00:00Z').toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
   })
+  const homeLink = `${siteOrigin(opts.link)}/?utm_source=reminder_footer&utm_medium=email`
 
   const red = { color: '#b23b3b', bg: '#fbeeee' }
   const amber = { color: '#c08a2e', bg: '#fbf3e4' }
@@ -51,6 +60,9 @@ export function buildEmail(opts: { name: string; person: string; expiration: str
     </div>
     <p style="max-width:520px;margin:16px auto 0;text-align:center;color:#8a949e;font-size:12px;line-height:1.5">
       You’re receiving this because you’re responsible for, or manage, this requirement in RenewalPilot.
+    </p>
+    <p style="max-width:520px;margin:10px auto 0;text-align:center;color:#8a949e;font-size:12px;line-height:1.5">
+      Sent with <a href="${homeLink}" style="color:#5b6774;font-weight:600;text-decoration:underline">RenewalPilot</a> · automatic license &amp; certification reminders for small teams. Free 14-day trial.
     </p>
   </div>`
 

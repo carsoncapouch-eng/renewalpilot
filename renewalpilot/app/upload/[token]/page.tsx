@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -17,11 +18,23 @@ async function fileHash(file: File) {
 }
 
 const shell: React.CSSProperties = {
-  minHeight: '100vh', background: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem',
+  minHeight: '100vh', background: 'var(--paper)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.5rem',
 }
 const cardStyle: React.CSSProperties = {
   width: '100%', maxWidth: 440, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16,
   boxShadow: '0 20px 50px rgba(28,37,48,0.10)', overflow: 'hidden',
+}
+
+function PoweredBy() {
+  return (
+    <Link
+      href="/?utm_source=upload_page&utm_medium=badge"
+      target="_blank"
+      style={{ marginTop: '1rem', fontSize: '0.78rem', color: 'var(--ink-soft)', textDecoration: 'none' }}
+    >
+      Powered by <strong style={{ color: 'var(--ink)' }}>RenewalPilot</strong>
+    </Link>
+  )
 }
 
 export default function EmployeeUploadPage() {
@@ -65,7 +78,7 @@ export default function EmployeeUploadPage() {
       const { path, uploadToken } = await post({ action: 'start', fileName: file.name, contentType, size: file.size, fileHash: hash })
       // 2. Upload the file straight to private storage
       const { error: uploadError } = await supabase.storage.from('documents').uploadToSignedUrl(path, uploadToken, file, { contentType })
-      if (uploadError) throw new Error('Upload failed. Please try again.')
+      if (uploadError) throw new Error('Upload failed. Please use a PDF, JPG or PNG under 10 MB and try again.')
       // 3. Save it and let AI read it
       const result = await post({ action: 'complete', path, contentType, fileHash: hash })
       setFoundDate(result.expiration_date)
@@ -99,6 +112,7 @@ export default function EmployeeUploadPage() {
             </p>
           </div>
         </div>
+        <PoweredBy />
       </div>
     )
   }
@@ -121,6 +135,16 @@ export default function EmployeeUploadPage() {
                 New expiration date: <strong>{pretty(foundDate)}</strong>
               </p>
             )}
+          </div>
+          <div style={{ borderTop: '1px solid var(--line)', background: 'var(--paper)', padding: '1rem 1.5rem', textAlign: 'center', fontSize: '0.85rem', color: 'var(--ink-soft)', lineHeight: 1.5 }}>
+            Do you manage a team? RenewalPilot tracks everyone’s licenses and certificates and reminds them automatically.{' '}
+            <Link
+              href="/?utm_source=upload_page&utm_medium=thank_you"
+              target="_blank"
+              style={{ color: 'var(--accent)', fontWeight: 600 }}
+            >
+              Try it free →
+            </Link>
           </div>
         </div>
       </div>
@@ -187,6 +211,7 @@ export default function EmployeeUploadPage() {
           </p>
         </form>
       </div>
+      <PoweredBy />
     </div>
   )
 }

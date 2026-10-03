@@ -7,10 +7,12 @@ import { accessState, trialDaysLeft, employeeLimit, PLAN_EMPLOYEE_LIMITS } from 
 
 // Display info only. Real prices live in Stripe + lib/stripe.ts.
 const PLANS = [
-  { key: 'starter',  name: 'Starter',  price: 49,  description: 'For small teams getting their renewals under control.', popular: false },
-  { key: 'business', name: 'Business', price: 99,  description: 'For growing teams with more people to keep compliant.', popular: true },
-  { key: 'pro',      name: 'Pro',      price: 199, description: 'For larger companies that need room to grow.', popular: false },
+  { key: 'starter',  name: 'Starter',  price: 49,  yearly: 490,  description: 'For small teams getting their renewals under control.', popular: false },
+  { key: 'business', name: 'Business', price: 99,  yearly: 990,  description: 'For growing teams with more people to keep compliant.', popular: true },
+  { key: 'pro',      name: 'Pro',      price: 199, yearly: 1990, description: 'For larger companies that need room to grow.', popular: false },
 ] as const
+
+type Interval = 'month' | 'year'
 
 type Org = {
   plan: string | null
@@ -68,6 +70,7 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [message, setMessage] = useState<Message | null>(null)
+  const [interval, setInterval] = useState<Interval>('month')
 
   async function loadOrg() {
     const orgId = await getCurrentOrganizationId()
@@ -104,7 +107,7 @@ export default function BillingPage() {
   async function subscribe(plan: string) {
     setBusy(plan); setMessage(null)
     try {
-      const { url } = await authedPost('/api/billing/checkout', { plan })
+      const { url } = await authedPost('/api/billing/checkout', { plan, interval })
       window.location.href = url
     } catch (e) {
       setMessage({ type: 'error', text: (e as Error).message }); setBusy(null)
@@ -148,6 +151,20 @@ export default function BillingPage() {
     summary = 'Your free trial has ended. Your data is safe, but adding things and reminder emails are paused until you choose a plan.'
   }
 
+  const toggleBtn = (value: Interval, label: string) => (
+    <button
+      onClick={() => setInterval(value)}
+      style={{
+        padding: '0.5rem 1rem', borderRadius: 999, fontSize: '0.88rem', fontWeight: 600, cursor: 'pointer',
+        border: 'none',
+        background: interval === value ? 'var(--accent)' : 'transparent',
+        color: interval === value ? '#fff' : 'var(--ink-soft)',
+      }}
+    >
+      {label}
+    </button>
+  )
+
   return (
     <main style={{ maxWidth: 1040, margin: '0 auto', padding: '2.5rem 1.75rem 4rem' }}>
       <h1 style={{ fontSize: '1.75rem', margin: '0 0 0.35rem' }}>Billing</h1>
@@ -178,7 +195,7 @@ export default function BillingPage() {
       )}
 
       {/* Current plan summary */}
-      <section style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '2.5rem' }}>
+      <section style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '2rem' }}>
         <div>
           <p style={{ margin: '0 0 0.35rem', fontSize: '0.75rem', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
             Current plan
@@ -232,16 +249,28 @@ export default function BillingPage() {
         )}
       </section>
 
+      {/* Monthly / Yearly switch (only before subscribing) */}
+      {!isSubscribed && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'inline-flex', padding: 4, borderRadius: 999, background: 'var(--surface)', border: '1px solid var(--line)' }}>
+            {toggleBtn('month', 'Monthly')}
+            {toggleBtn('year', 'Yearly')}
+          </div>
+          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--signal-green)' }}>Yearly = 2 months free</span>
+        </div>
+      )}
+
       {/* Plan cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
         {PLANS.map(p => {
           const planLimit = PLAN_EMPLOYEE_LIMITS[p.key] ?? null
           const tooSmall = planLimit !== null && activeEmployees !== null && activeEmployees > planLimit
           const isCurrent = isSubscribed && org?.plan === p.key
+          const showYearly = !isSubscribed && interval === 'year'
           const label = busy === p.key ? 'Redirecting…'
             : isCurrent ? 'Current plan'
             : isSubscribed ? 'Switch plan'
-            : `Choose ${p.name}`
+            : `Choose ${p.name}${showYearly ? ' yearly' : ''}`
           const primary = !isCurrent && (p.popular || !isSubscribed)
 
           return (
@@ -264,8 +293,15 @@ export default function BillingPage() {
               )}
               <h3 style={{ margin: '0.25rem 0 0.75rem', fontSize: '1.1rem' }}>{p.name}</h3>
               <p style={{ margin: 0, display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                <span className="mono" style={{ fontSize: '2.25rem', fontWeight: 600, letterSpacing: '-0.02em' }}>${p.price}</span>
-                <span style={{ color: 'var(--ink-soft)', fontSize: '0.9rem' }}>/ month</span>
+                <span className="mono" style={{ fontSize: '2.25rem', fontWeight: 600, letterSpacing: '-0.02em' }}>
+                  ${showYearly ? p.yearly.toLocaleString() : p.price}
+                </span>
+                <span style={{ color: 'var(--ink-soft)', fontSize: '0.9rem' }}>/ {showYearly ? 'year' : 'month'}</span>
+              </p>
+              <p style={{ margin: '0.3rem 0 0', fontSize: '0.8rem', color: showYearly ? 'var(--signal-green)' : 'var(--ink-soft)' }}>
+                {showYearly
+                  ? `Just $${Math.round(p.yearly / 12)}/month · 2 months free`
+                  : `or $${p.yearly.toLocaleString()}/year (2 months free)`}
               </p>
               <p style={{ margin: '0.85rem 0 0', fontWeight: 600, fontSize: '0.95rem' }}>
                 {limitText(planLimit)}
