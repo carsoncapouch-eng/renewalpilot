@@ -15,6 +15,13 @@ const PROMPT =
   'and confidence (a number 0 to 1 for how sure you are). If a field is not visible, use null.'
 
 const MAX_BYTES = 10 * 1024 * 1024 // 10 MB
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Files are stored as "{organizationId}/{timestamp}-{name}", so the company is the first folder
+function orgIdFromPath(path: string) {
+  const first = path.split('/')[0]
+  return UUID_RE.test(first) ? first : null
+}
 
 // Reads a file from private storage and asks OpenAI to pull out the key details.
 export async function extractFromStorage(
@@ -25,9 +32,35 @@ export async function extractFromStorage(
   if (downloadError || !blob) return { data: null, error: 'Could not read the file.' }
   if (blob.size > MAX_BYTES) return { data: null, error: 'File is too large to analyze (max 10 MB).' }
 
-  const base64 = Buffer.from(await blob.arrayBuffer()).toString('base64')
   const mime = blob.type || mimeHint || 'application/octet-stream'
-  const isPdf = mime === 'application/pdf' || path.toLowerCase().endsWith('.pdf')
+  const lower = path.toLowerCase()
+  const isPdf = mime === 'application/pdf' || lower.endsWith('.pdf')
+  const isHeic = mime === 'image/heic' || mime === 'image/heif' || lower.endsWith('.heic') || lower.endsWith('.heif')
+
+  if (isHeic) {
+    return {
+      data: null,
+      error: "The AI can't read iPhone HEIC photos. Please type the expiration date, or upload a JPG or PDF instead.",
+    }
+  }
+
+  // Daily AI limit per company (trial 25/day, paid 200/day)
+  const orgId = orgIdFromPath(path)
+  if (orgId) {
+    const { data: allowed, error: creditError } = await supabaseAdmin.rpc('use_ai_credit', { p_org: orgId })
+    if (creditError) {
+      console.error('[extract] credit check failed', creditError)
+      return { data: null, error: 'AI reading is unavailable right now. Please type the expiration date.' }
+    }
+    if (!allowed) {
+      return {
+        data: null,
+        error: "You've reached today's limit for AI document reading. Please type the expiration date, or try again tomorrow.",
+      }
+    }
+  }
+
+  const base64 = Buffer.from(await blob.arrayBuffer()).toString('base64')
 
   const filePart = isPdf
     ? { type: 'file', file: { filename: path.split('/').pop(), file_data: `data:application/pdf;base64,${base64}` } }
@@ -44,7 +77,10 @@ export async function extractFromStorage(
   })
 
   const json = await response.json()
-  if (!response.ok) return { data: null, error: json.error?.message || 'AI request failed' }
+  if (!response.ok) {
+    console.error('[extract] OpenAI error', json.error?.message)
+    return { data: null, error: 'AI reading is unavailable right now. Please type the expiration date.' }
+  }
 
   try {
     return { data: JSON.parse(json.choices[0].message.content) as Extracted, error: null }
