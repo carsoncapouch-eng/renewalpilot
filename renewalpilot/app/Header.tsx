@@ -59,6 +59,24 @@ function bannerFor(org: AccessInfo | null): Banner | null {
   }
 }
 
+// Sends the "How did you hear about us?" answer saved during signup, then forgets it
+async function sendSignupInfo(accessToken: string) {
+  try {
+    const heardFrom = localStorage.getItem('rp_heard_from') || ''
+    const source = localStorage.getItem('rp_signup_source') || ''
+    if (!heardFrom && !source) return
+    const res = await fetch('/api/heard-from', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ heardFrom, source }),
+    })
+    if (res.ok) {
+      localStorage.removeItem('rp_heard_from')
+      localStorage.removeItem('rp_signup_source')
+    }
+  } catch {}
+}
+
 export default function Header() {
   const pathname = usePathname() || '/'
   const router = useRouter()
@@ -86,6 +104,7 @@ export default function Header() {
       try {
         const orgId = await getCurrentOrganizationId()
         if (!orgId) return
+        sendSignupInfo(data.session.access_token)
         const { data: row } = await supabase
           .from('organizations')
           .select('name, plan, subscription_status, trial_ends_at')

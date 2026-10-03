@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
@@ -7,20 +7,53 @@ import { supabase } from '@/lib/supabaseClient'
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--ink-soft)', marginBottom: 6 }
 const inputStyle: React.CSSProperties = { width: '100%', padding: '0.75rem 0.85rem', fontSize: '0.95rem', outline: 'none' }
 
+const HEARD_OPTIONS = [
+  'Google search',
+  'ChatGPT or another AI assistant',
+  'Reddit',
+  'Capterra, G2 or another software site',
+  'Facebook group',
+  'YouTube',
+  'A reminder email from RenewalPilot',
+  'A friend or colleague',
+  'Other',
+]
+
+// Saved in the browser until the user is logged in, then sent to the server (see Header)
+function rememberSignupInfo(heardFrom: string) {
+  try {
+    if (heardFrom) localStorage.setItem('rp_heard_from', heardFrom)
+  } catch {}
+}
+
 export default function SignupPage() {
   const [company, setCompany] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [heardFrom, setHeardFrom] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [checkEmail, setCheckEmail] = useState(false)
   const router = useRouter()
+
+  // Remember where the visitor came from (e.g. ?utm_source=capterra), first visit wins
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('rp_signup_source')) return
+      const params = new URLSearchParams(window.location.search)
+      const utm = params.get('utm_source') || params.get('ref')
+      const referrer = document.referrer && !document.referrer.includes(window.location.host) ? document.referrer : ''
+      const source = utm ? `utm:${utm}` : referrer ? `ref:${referrer}` : ''
+      if (source) localStorage.setItem('rp_signup_source', source.slice(0, 200))
+    } catch {}
+  }, [])
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     if (password.length < 8) { setError('Please use a password with at least 8 characters.'); return }
     setBusy(true)
+    rememberSignupInfo(heardFrom)
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -49,6 +82,7 @@ export default function SignupPage() {
 
   async function handleGoogle() {
     setError('')
+    rememberSignupInfo(heardFrom)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/dashboard` },
@@ -79,6 +113,17 @@ export default function SignupPage() {
         <form onSubmit={handleSignup} style={card}>
           <h1 style={{ fontSize: '1.5rem', margin: '0 0 0.35rem' }}>Create your account</h1>
           <p style={{ color: 'var(--ink-soft)', margin: '0 0 1.5rem', fontSize: '0.92rem' }}>Start your 14-day free trial. No card needed.</p>
+
+          <label style={labelStyle}>How did you hear about RenewalPilot? <span style={{ fontWeight: 400 }}>(optional)</span></label>
+          <select
+            style={{ ...inputStyle, background: 'var(--surface)', color: heardFrom ? 'var(--ink)' : 'var(--ink-soft)' }}
+            value={heardFrom}
+            onChange={e => setHeardFrom(e.target.value)}
+          >
+            <option value="">Choose one…</option>
+            {HEARD_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+          <div style={{ height: '1.25rem' }} />
 
           <button
             type="button"
