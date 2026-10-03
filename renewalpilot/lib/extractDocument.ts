@@ -24,12 +24,14 @@ function orgIdFromPath(path: string) {
 }
 
 // Reads a file from private storage and asks OpenAI to pull out the key details.
+// Pass organizationId when you know it; otherwise it's taken from the file path.
 export async function extractFromStorage(
   path: string,
-  mimeHint?: string | null
+  mimeHint?: string | null,
+  organizationId?: string | null
 ): Promise<{ data: Extracted | null; error: string | null }> {
   const { data: blob, error: downloadError } = await supabaseAdmin.storage.from('documents').download(path)
-  if (downloadError || !blob) return { data: null, error: 'Could not read the file.' }
+  if (downloadError || !blob) return { data: null, error: 'Could not read the file. Try re-uploading it.' }
   if (blob.size > MAX_BYTES) return { data: null, error: 'File is too large to analyze (max 10 MB).' }
 
   const mime = blob.type || mimeHint || 'application/octet-stream'
@@ -45,7 +47,7 @@ export async function extractFromStorage(
   }
 
   // Daily AI limit per company (trial 25/day, paid 200/day)
-  const orgId = orgIdFromPath(path)
+  const orgId = organizationId || orgIdFromPath(path)
   if (orgId) {
     const { data: allowed, error: creditError } = await supabaseAdmin.rpc('use_ai_credit', { p_org: orgId })
     if (creditError) {
@@ -85,6 +87,6 @@ export async function extractFromStorage(
   try {
     return { data: JSON.parse(json.choices[0].message.content) as Extracted, error: null }
   } catch {
-    return { data: null, error: 'AI returned an unreadable answer.' }
+    return { data: null, error: 'AI returned an unreadable answer. Please try again.' }
   }
 }
